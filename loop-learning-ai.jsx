@@ -52,20 +52,37 @@ function makeQuizCode(subjectName, existingCodes) {
 /* ============================== STORAGE ============================== */
 
 async function loadDB() {
-  try { const res = await window.storage.get(DB_KEY, true); if (!res) return emptyDB(); return { ...emptyDB(), ...JSON.parse(res.value) }; }
+  try {
+    const res = window.storage?.get ? await window.storage.get(DB_KEY, true) : { value: localStorage.getItem(DB_KEY) };
+    if (!res?.value) return emptyDB();
+    return { ...emptyDB(), ...JSON.parse(res.value) };
+  }
   catch (e) { return emptyDB(); }
 }
 async function saveDB(db) {
-  try { await window.storage.set(DB_KEY, JSON.stringify(db), true); return true; }
+  try {
+    if (window.storage?.set) await window.storage.set(DB_KEY, JSON.stringify(db), true);
+    else localStorage.setItem(DB_KEY, JSON.stringify(db));
+    return true;
+  }
   catch (e) { console.error("Storage error", e); return false; }
 }
 async function saveFile(id, fileObj) {
-  try { await window.storage.set("loop_file_" + id, JSON.stringify(fileObj), true); return true; }
+  try {
+    const key = "loop_file_" + id;
+    if (window.storage?.set) await window.storage.set(key, JSON.stringify(fileObj), true);
+    else localStorage.setItem(key, JSON.stringify(fileObj));
+    return true;
+  }
   catch (e) { return false; }
 }
 async function getFile(id) {
   if (!id) return null;
-  try { const res = await window.storage.get("loop_file_" + id, true); return res ? JSON.parse(res.value) : null; }
+  try {
+    const key = "loop_file_" + id;
+    const res = window.storage?.get ? await window.storage.get(key, true) : { value: localStorage.getItem(key) };
+    return res?.value ? JSON.parse(res.value) : null;
+  }
   catch (e) { return null; }
 }
 function fileToPayload(file) {
@@ -95,12 +112,12 @@ function fileToContentBlock(fileObj) {
   return null;
 }
 async function callClaude(system, userContentBlocks) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/claude", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: MODEL, max_tokens: 1000, system, messages: [{ role: "user", content: userContentBlocks }] }),
   });
-  if (!response.ok) throw new Error("AI request failed (" + response.status + ")");
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "AI request failed (" + response.status + ")");
   return (data.content || []).map((b) => b.text || "").join("\n");
 }
 function extractJSON(text) {
