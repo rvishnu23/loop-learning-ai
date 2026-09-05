@@ -483,11 +483,12 @@ function StudentAuth({ db, onLogin }) {
 
 /* ============================== SIDEBAR ============================== */
 
-function Sidebar({ nav, tab, setTab, onExit, title, subtitle, onAccount }) {
+function Sidebar({ nav, tab, setTab, onExit, onReset, isDemo, title, subtitle, onAccount }) {
   return (
     <div className="w-60 shrink-0 bg-indigo-950 text-indigo-100 flex flex-col">
-      <div className="px-5 py-5 border-b border-indigo-900 flex items-center gap-2"><RefreshCw size={20} className="text-teal-300" /><div><div className="text-sm font-black text-white leading-none">{subtitle}</div><div className="text-[11px] text-indigo-300 truncate max-w-[150px]">{title}</div></div></div>
+      <div className="px-5 py-5 border-b border-indigo-900 flex items-start gap-2"><RefreshCw size={20} className="text-teal-300 mt-0.5" /><div><div className="text-sm font-black text-white leading-none">{subtitle}</div><div className="text-[11px] text-indigo-300 truncate max-w-[150px]">{title}</div>{isDemo && <span className="inline-flex mt-2 px-1.5 py-0.5 rounded bg-teal-300/15 border border-teal-300/30 text-[9px] font-bold tracking-wide text-teal-200">DEMO DATA</span>}</div></div>
       <div className="flex-1 py-3 px-2 space-y-0.5">{nav.map((n) => (<button key={n.id} onClick={() => setTab(n.id)} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition ${tab === n.id ? "bg-indigo-800 text-white" : "text-indigo-200 hover:bg-indigo-900"}`}><n.icon size={16} /><span className="flex-1 text-left">{n.label}</span>{!!n.badge && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{n.badge}</span>}</button>))}</div>
+      {isDemo && <button onClick={onReset} className="mx-3 mb-1 px-3 py-2 rounded-lg text-left text-xs text-teal-200 hover:bg-indigo-900">Reset demo workspace</button>}
       <button onClick={onAccount} className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-indigo-300 hover:bg-indigo-900"><Settings size={15} /> Account</button>
       <button onClick={onExit} className="mx-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-indigo-300 hover:bg-indigo-900"><LogOut size={15} /> Log out</button>
     </div>
@@ -539,7 +540,7 @@ function TeacherApp({ db, setDb, refresh, teacher, onExit }) {
 
   return (
     <div className="min-h-[640px] flex" style={{ background: COLORS.bg }}>
-      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} title={teacher.name} subtitle="Loop Learning AI · Teacher" onAccount={() => setShowAccount(true)} />
+      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} onReset={async () => { if (window.confirm("Reset the demo workspace and return to login?")) { await setDb(emptyDB()); onExit(); } }} isDemo={teacher.username === "demo.teacher"} title={teacher.name} subtitle="Loop Learning AI · Teacher" onAccount={() => setShowAccount(true)} />
       <div className="flex-1 p-6 overflow-auto max-h-[900px]">
         {tab === "overview" && <TeacherOverview db={db} scope={scope} setTab={setTab} />}
         {tab === "assessment" && <OfficialAssessments db={db} setDb={setDb} scope={scope} />}
@@ -1319,7 +1320,7 @@ function StudentApp({ db, setDb, refresh, studentId, onExit }) {
   if (!student) return <EmptyHint text="Student not found." />;
   return (
     <div className="min-h-[640px] flex" style={{ background: COLORS.bg }}>
-      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} title={student.name} subtitle="Loop Learning AI · Student" onAccount={() => setShowAccount(true)} />
+      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} onReset={async () => { if (window.confirm("Reset the demo workspace and return to login?")) { await setDb(emptyDB()); onExit(); } }} isDemo={student.username === "alice1" || student.username === "ben1"} title={student.name} subtitle="Loop Learning AI · Student" onAccount={() => setShowAccount(true)} />
       <div className="flex-1 p-6 overflow-auto max-h-[900px]">
         {tab === "performance" && <div className="max-w-4xl"><h1 className="text-2xl font-black text-stone-800 mb-4">My Performance</h1><StudentOfficialResults db={db} student={student} /><StudentDiagnosticProfile db={db} student={student} /></div>}
         {tab === "join" && <JoinLiveQuiz db={db} setDb={setDb} refresh={refresh} student={student} onGoPractice={(topic) => { setPracticeTopicSeed(topic); setTab("practice"); }} />}
