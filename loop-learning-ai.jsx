@@ -492,12 +492,11 @@ function StudentAuth({ db, onLogin }) {
 
 /* ============================== SIDEBAR ============================== */
 
-function Sidebar({ nav, tab, setTab, onExit, onReset, isDemo, title, subtitle, onAccount }) {
+function Sidebar({ nav, tab, setTab, onExit, title, subtitle, onAccount }) {
   return (
     <div className="w-60 shrink-0 bg-indigo-950 text-indigo-100 flex flex-col">
-      <div className="px-5 py-5 border-b border-indigo-900 flex items-start gap-2"><RefreshCw size={20} className="text-teal-300 mt-0.5" /><div><div className="text-sm font-black text-white leading-none">{subtitle}</div><div className="text-[11px] text-indigo-300 truncate max-w-[150px]">{title}</div>{isDemo && <span className="inline-flex mt-2 px-1.5 py-0.5 rounded bg-teal-300/15 border border-teal-300/30 text-[9px] font-bold tracking-wide text-teal-200">DEMO DATA</span>}</div></div>
+      <div className="px-5 py-5 border-b border-indigo-900 flex items-center gap-2"><RefreshCw size={20} className="text-teal-300" /><div><div className="text-sm font-black text-white leading-none">{subtitle}</div><div className="text-[11px] text-indigo-300 truncate max-w-[150px]">{title}</div></div></div>
       <div className="flex-1 py-3 px-2 space-y-0.5">{nav.map((n) => (<button key={n.id} onClick={() => setTab(n.id)} className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition ${tab === n.id ? "bg-indigo-800 text-white" : "text-indigo-200 hover:bg-indigo-900"}`}><n.icon size={16} /><span className="flex-1 text-left">{n.label}</span>{!!n.badge && <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{n.badge}</span>}</button>))}</div>
-      {isDemo && <button onClick={onReset} className="mx-3 mb-1 px-3 py-2 rounded-lg text-left text-xs text-teal-200 hover:bg-indigo-900">Reset demo workspace</button>}
       <button onClick={onAccount} className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-indigo-300 hover:bg-indigo-900"><Settings size={15} /> Account</button>
       <button onClick={onExit} className="mx-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-indigo-300 hover:bg-indigo-900"><LogOut size={15} /> Log out</button>
     </div>
@@ -549,7 +548,7 @@ function TeacherApp({ db, setDb, refresh, teacher, onExit }) {
 
   return (
     <div className="min-h-[640px] flex" style={{ background: COLORS.bg }}>
-      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} onReset={async () => { if (window.confirm("Reset the demo workspace and return to login?")) { await setDb(emptyDB()); onExit(); } }} isDemo={teacher.username === "demo.teacher"} title={teacher.name} subtitle="Loop Learning AI · Teacher" onAccount={() => setShowAccount(true)} />
+      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} title={teacher.name} subtitle="Loop Learning AI · Teacher" onAccount={() => setShowAccount(true)} />
       <div className="flex-1 p-6 overflow-auto max-h-[900px]">
         {tab === "overview" && <TeacherOverview db={db} scope={scope} setTab={setTab} />}
         {tab === "assessment" && <OfficialAssessments db={db} setDb={setDb} scope={scope} />}
@@ -570,17 +569,22 @@ function TeacherApp({ db, setDb, refresh, teacher, onExit }) {
 function TeacherOverview({ db, scope, setTab }) {
   const submitted = scope.quizAttempts.filter((a) => a.status === "submitted");
   const avg = submitted.length ? submitted.reduce((s, a) => s + (a.score / a.maxScore) * 100, 0) / submitted.length : 0;
+  const topicMap = {};
+  submitted.forEach((attempt) => (attempt.topics || []).forEach((topic) => { topicMap[topic.topic] ||= []; topicMap[topic.topic].push(topic.percent); }));
+  const topicData = Object.entries(topicMap).map(([topic, values]) => ({ topic, average: Math.round(values.reduce((a, b) => a + b, 0) / values.length) })).sort((a, b) => a.average - b.average);
+  const weakestTopic = topicData[0]; const needingSupport = new Set(submitted.filter((attempt) => (attempt.score / attempt.maxScore) * 100 < db.thresholds.needsPractice).map((attempt) => attempt.studentId)).size;
   const recent = [...scope.assessments].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, 5);
   const stat = (label, value, icon, color) => (<Card className="p-4 flex items-center gap-3"><div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: color + "20" }}>{React.createElement(icon, { size: 18, style: { color } })}</div><div><div className="text-xl font-black text-stone-800">{value}</div><div className="text-xs text-stone-500">{label}</div></div></Card>);
   return (
     <div className="space-y-5 max-w-5xl">
-      <div><h1 className="text-2xl font-black text-stone-800">Dashboard</h1><p className="text-stone-500 text-sm">AI generates diagnostic quizzes and surfaces learning patterns — you review, approve, and decide the teaching response.</p></div>
+      <div><div className="flex items-center gap-2 mb-1"><h1 className="text-2xl font-black text-stone-800">Classroom overview</h1><Badge tone="teal">Live learning view</Badge></div><p className="text-stone-500 text-sm">See where the class is progressing, then move directly into targeted practice.</p></div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {stat("Students", scope.students.length, Users, COLORS.indigo)}
-        {stat("Assessments created", scope.assessments.length, ClipboardList, COLORS.teal)}
-        {stat("Live quizzes", scope.assessments.filter((a) => a.status === "live").length, Radio, COLORS.rose)}
-        {stat("Avg. diagnostic score", submitted.length ? Math.round(avg) + "%" : "—", TrendingUp, COLORS.amber)}
+        {stat("Need support", needingSupport || "—", AlertTriangle, COLORS.rose)}
+        {stat("Assessments", scope.assessments.length, ClipboardList, COLORS.teal)}
+        {stat("Class average", submitted.length ? Math.round(avg) + "%" : "—", TrendingUp, COLORS.amber)}
       </div>
+      {weakestTopic && <Card className="p-4 border-rose-200 bg-rose-50/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-wide text-rose-700">Recommended teaching move</div><div className="text-sm text-rose-900 mt-1">Revisit <b>{weakestTopic.topic}</b> first. The class is averaging {weakestTopic.average}% here.</div></div><GhostButton icon={Layers} onClick={() => setTab("analysis")} className="self-start sm:self-auto border-rose-200 text-rose-700">Open learning analysis</GhostButton></Card>}
       <TeacherPerformanceCharts db={db} scope={scope} />
       <Card className="p-5">
         <div className="font-bold text-stone-700 mb-3 text-sm">Recent assessments</div>
@@ -1346,7 +1350,7 @@ function StudentApp({ db, setDb, refresh, studentId, onExit }) {
   if (!student) return <EmptyHint text="Student not found." />;
   return (
     <div className="min-h-[640px] flex" style={{ background: COLORS.bg }}>
-      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} onReset={async () => { if (window.confirm("Reset the demo workspace and return to login?")) { await setDb(emptyDB()); onExit(); } }} isDemo={student.username === "alice1" || student.username === "ben1"} title={student.name} subtitle="Loop Learning AI · Student" onAccount={() => setShowAccount(true)} />
+      <Sidebar nav={nav} tab={tab} setTab={setTab} onExit={onExit} title={student.name} subtitle="Loop Learning AI · Student" onAccount={() => setShowAccount(true)} />
       <div className="flex-1 p-6 overflow-auto max-h-[900px]">
         {tab === "performance" && <div className="max-w-4xl"><h1 className="text-2xl font-black text-stone-800 mb-4">My Performance</h1><StudentOfficialResults db={db} student={student} /><StudentDiagnosticProfile db={db} student={student} /></div>}
         {tab === "join" && <JoinLiveQuiz db={db} setDb={setDb} refresh={refresh} student={student} onGoPractice={(topic) => { setPracticeTopicSeed(topic); setTab("practice"); }} />}
