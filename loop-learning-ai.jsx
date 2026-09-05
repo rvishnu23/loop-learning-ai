@@ -16,6 +16,7 @@ import {
 /* ============================== CONSTANTS ============================== */
 
 const DB_KEY = "loop_learning_db_v3";
+const DEMO_DATA_VERSION = 2;
 const GEMINI_MODEL = "gemini-3.6-flash";
 
 const COLORS = {
@@ -57,15 +58,10 @@ async function loadDB() {
     if (!response.ok) throw new Error("Database unavailable");
     const data = await response.json();
     const db = { ...emptyDB(), ...(data.db || {}) };
-    if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && db.students.length < 6) { const expanded = await expandDemoWorkspace(db); await saveDB(expanded); return expanded; }
+    if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && (db.demoDataVersion || 0) < DEMO_DATA_VERSION) { const expanded = await expandDemoWorkspace(db); await saveDB(expanded); return expanded; }
     return db;
   } catch (e) {
-    try {
-      const value = localStorage.getItem(DB_KEY); const db = value ? { ...emptyDB(), ...JSON.parse(value) } : emptyDB();
-      if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && db.students.length < 6) { const expanded = await expandDemoWorkspace(db); try { localStorage.setItem(DB_KEY, JSON.stringify(expanded)); } catch (storageError) { /* keep in memory */ } return expanded; }
-      return db;
-    }
-    catch (storageError) { return emptyDB(); }
+    throw new Error("Workspace database is unavailable. Check the Supabase connection and refresh.");
   }
 }
 async function saveDB(db) {
@@ -142,6 +138,7 @@ async function seedDemoWorkspace(db) {
     subjects: [...db.subjects, { id: mathsId, name: "Mathematics" }, { id: scienceId, name: "Science" }],
     assessments: [...db.assessments, assessmentOne, assessmentTwo],
     quizAttempts: [...db.quizAttempts, ...attempts],
+    demoDataVersion: DEMO_DATA_VERSION,
     practiceSessions: [...db.practiceSessions,
       { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Linear equations", difficulty: "Medium", score: 3, total: 4, timestamp: "2026-08-25T10:00:00.000Z" },
       { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Factorisation", difficulty: "Easy", score: 4, total: 4, timestamp: "2026-09-03T10:00:00.000Z" },
@@ -153,6 +150,7 @@ async function expandDemoWorkspace(db) {
   const demoTeacher = db.teacherAccounts.find((t) => t.username === "demo.teacher");
   const classRecord = db.classes.find((c) => c.teacherId === demoTeacher?.id) || db.classes[0];
   if (!demoTeacher || !classRecord) return db;
+  if (db.students.length >= 6) return { ...db, demoDataVersion: DEMO_DATA_VERSION };
   const passwordSalt = makeSalt(); const passwordHash = await hashPassword("student123", passwordSalt);
   const names = [["Chloe Patel", "03", "chloe1"], ["Daniel Lee", "04", "daniel1"], ["Eva Martin", "05", "eva1"], ["Farah Khan", "06", "farah1"]];
   const addedStudents = names.map(([name, rollNo, username]) => ({ id: uid(), name, rollNo, classId: classRecord.id, username, salt: passwordSalt, passwordHash, disabled: false }));
@@ -169,7 +167,7 @@ async function expandDemoWorkspace(db) {
     const score = Math.min(4, 1 + ((studentIndex + assessmentIndex) % 4));
     attempts.push({ id: uid(), assessmentId: assessment.id, studentId: student.id, status: "submitted", answers: {}, score, maxScore: 4, topics: [{ topic: "Linear equations", percent: score >= 3 ? 75 : 50, ...classify(score >= 3 ? 75 : 50, db.thresholds) }, { topic: "Factorisation", percent: score >= 3 ? 75 : 25, ...classify(score >= 3 ? 75 : 25, db.thresholds) }], submittedAt: `2026-09-${String(3 + studentIndex).padStart(2, "0")}T09:00:00.000Z` });
   }));
-  return { ...db, students, subjects, assessments: allAssessments, quizAttempts: attempts };
+  return { ...db, students, subjects, assessments: allAssessments, quizAttempts: attempts, demoDataVersion: DEMO_DATA_VERSION };
 }
 
 /* ============================== AI CALLS ============================== */
@@ -197,6 +195,16 @@ function extractJSON(text) {
   if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
   return JSON.parse(clean.slice(start, end + 1));
 }
+function validateQuizQuestions(parsed, expectedCount) {
+  const questions = Array.isArray(parsed) ? parsed : parsed?.questions;
+  if (!Array.isArray(questions) || questions.length !== expectedCount) throw new Error(`AI returned ${questions?.length || 0} questions; expected ${expectedCount}. Please try again.`);
+  questions.forEach((q) => {
+    if (!q?.type || !q.question || !Number.isFinite(Number(q.marks))) throw new Error("AI returned an incomplete question. Please try again.");
+    if (q.type === "mcq" && (!Array.isArray(q.options) || q.options.length !== 4 || !Number.isInteger(q.correctIndex))) throw new Error("AI returned an invalid multiple-choice question. Please try again.");
+    if (q.type === "subjective" && (!q.modelAnswer || !Array.isArray(q.markingPoints))) throw new Error("AI returned an incomplete written question. Please try again.");
+  });
+  return questions;
+}
 
 function typeLabel(id) { return QUESTION_TYPES.find((t) => t.id === id)?.label || id; }
 
@@ -219,8 +227,7 @@ async function generateDiagnosticQuiz({ subject, chapter, topics, typeIds, numQu
     '"question":string,"options"?:[string,string,string,string],"correctIndex"?:number,"correctAnswer"?:boolean|string,' +
     '"modelAnswer"?:string,"markingPoints"?:[string],"explanation":string}]}';
   const parsed = extractJSON(await callAI(system, [{ type: "text", text: "Generate the quiz now." }]));
-  const result = Array.isArray(parsed) ? { questions: parsed } : parsed;
-  return (result.questions || []).map((q) => ({ id: uid(), ...q }));
+  return validateQuizQuestions(parsed, Number(numQuestions)).map((q) => ({ id: uid(), ...q }));
 }
 
 async function regenerateOneQuestion({ subject, chapter, topic, typeId, difficulty }) {
@@ -280,7 +287,7 @@ async function generatePracticeQuiz({ subject, chapter, topic, difficulty, spec 
     '"question":string,"options"?:[string,string,string,string],"correctIndex"?:number,"correctAnswer"?:boolean|string,' +
     '"modelAnswer"?:string,"markingPoints"?:[string],"explanation":string,"solutionSteps":[string]}]}';
   const parsed = extractJSON(await callAI(system, [{ type: "text", text: "Generate the quiz now." }]));
-  return Array.isArray(parsed) ? { questions: parsed } : parsed;
+  return { questions: validateQuizQuestions(parsed, spec.reduce((sum, item) => sum + item.count, 0)) };
 }
 
 function isAIReadable(fileMeta) { return !!fileMeta && (fileMeta.mediaType === "application/pdf" || (fileMeta.mediaType || "").startsWith("image/")); }
@@ -392,12 +399,13 @@ function VisualBlock({ visual }) {
 
 export default function App() {
   const [db, setDbState] = useState(null);
+  const [dbError, setDbError] = useState("");
   const [session, setSession] = useState(null);
-  useEffect(() => { loadDB().then(setDbState); }, []);
+  useEffect(() => { loadDB().then(setDbState).catch((error) => setDbError(error.message)); }, []);
   const persist = useCallback(async (next) => { setDbState(next); await saveDB(next); }, []);
   const refresh = useCallback(async () => { const fresh = await loadDB(); setDbState(fresh); return fresh; }, []);
 
-  if (!db) return <div className="min-h-[500px] flex items-center justify-center" style={{ background: COLORS.bg }}><Loader2 className="animate-spin text-indigo-600" size={28} /></div>;
+  if (!db) return <div className="min-h-[500px] flex flex-col gap-3 items-center justify-center px-6 text-center" style={{ background: COLORS.bg }}>{dbError ? <><AlertTriangle className="text-rose-600" size={28} /><div className="text-sm text-rose-700">{dbError}</div></> : <Loader2 className="animate-spin text-indigo-600" size={28} />}</div>;
   if (!session) return <AuthGate db={db} setDb={persist} onLogin={setSession} />;
 
   if (session.type === "teacher") {
