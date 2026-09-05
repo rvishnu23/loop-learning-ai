@@ -16,7 +16,7 @@ import {
 /* ============================== CONSTANTS ============================== */
 
 const DB_KEY = "loop_learning_db_v3";
-const MODEL = "claude-sonnet-4-6";
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 const COLORS = {
   ink: "#1E2333", indigo: "#4338CA", indigoDeep: "#2C2A6B", teal: "#0D9488",
@@ -111,10 +111,10 @@ function fileToContentBlock(fileObj) {
   if (fileObj.mediaType && fileObj.mediaType.startsWith("image/")) return { type: "image", source: { type: "base64", media_type: fileObj.mediaType, data: fileObj.data } };
   return null;
 }
-async function callClaude(system, userContentBlocks) {
+async function callAI(system, userContentBlocks) {
   const response = await fetch("/api/claude", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: 1000, system, messages: [{ role: "user", content: userContentBlocks }] }),
+    body: JSON.stringify({ model: GEMINI_MODEL, max_tokens: 4096, system, messages: [{ role: "user", content: userContentBlocks }] }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "AI request failed (" + response.status + ")");
@@ -122,7 +122,9 @@ async function callClaude(system, userContentBlocks) {
 }
 function extractJSON(text) {
   const clean = text.replace(/```json/gi, "").replace(/```/g, "").trim();
-  const start = clean.indexOf("{"), end = clean.lastIndexOf("}");
+  const objectStart = clean.indexOf("{"), arrayStart = clean.indexOf("[");
+  const start = objectStart === -1 ? arrayStart : arrayStart === -1 ? objectStart : Math.min(objectStart, arrayStart);
+  const end = start === arrayStart ? clean.lastIndexOf("]") : clean.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
   return JSON.parse(clean.slice(start, end + 1));
 }
@@ -147,7 +149,8 @@ async function generateDiagnosticQuiz({ subject, chapter, topics, typeIds, numQu
     '{"questions": [{"type":"mcq"|"tf"|"fill"|"subjective","marks":number,"topic":string,"difficulty":"easy"|"medium"|"hard",' +
     '"question":string,"options"?:[string,string,string,string],"correctIndex"?:number,"correctAnswer"?:boolean|string,' +
     '"modelAnswer"?:string,"markingPoints"?:[string],"explanation":string}]}';
-  const result = extractJSON(await callClaude(system, [{ type: "text", text: "Generate the quiz now." }]));
+  const parsed = extractJSON(await callAI(system, [{ type: "text", text: "Generate the quiz now." }]));
+  const result = Array.isArray(parsed) ? { questions: parsed } : parsed;
   return (result.questions || []).map((q) => ({ id: uid(), ...q }));
 }
 
@@ -160,7 +163,7 @@ async function regenerateOneQuestion({ subject, chapter, topic, typeId, difficul
     'Respond with ONLY compact JSON, no markdown fences: {"question": {"type":"' + internalType + '","marks":' + marks +
     ',"topic":"' + topic + '","difficulty":"' + difficulty + '","question":string,"options"?:[string,string,string,string],' +
     '"correctIndex"?:number,"correctAnswer"?:boolean|string,"modelAnswer"?:string,"markingPoints"?:[string],"explanation":string}}';
-  const result = extractJSON(await callClaude(system, [{ type: "text", text: "Generate it now." }]));
+  const result = extractJSON(await callAI(system, [{ type: "text", text: "Generate it now." }]));
   return { id: uid(), ...result.question };
 }
 
@@ -172,7 +175,7 @@ async function evaluateSubjectiveAnswers(items) {
     "what was missing, the likely misunderstood concept, and one thing to practise next. Respond with ONLY compact JSON, " +
     'no markdown fences: {"evaluations": [{"marksAwarded": number, "whatWasCorrect": string, "whatWasMissing": string, ' +
     '"misunderstoodConcept": string, "nextPractice": string}]} in the same order given. Keep fields under 18 words.';
-  const result = extractJSON(await callClaude(system, [{ type: "text", text: JSON.stringify(items) }]));
+  const result = extractJSON(await callAI(system, [{ type: "text", text: JSON.stringify(items) }]));
   return result.evaluations || [];
 }
 
@@ -192,7 +195,7 @@ async function askDoubt({ subject, topic, question, materials }) {
     '"shapes"?: [{"kind":"circle"|"rect","x":number,"y":number,"r"?:number,"w"?:number,"h"?:number}]}}';
   const blocks = [{ type: "text", text: `Subject: ${subject || "General"}\nTopic focus: ${topic || "General"}\nStudent's message: ${question}` }];
   (materials || []).forEach((m) => { const b = fileToContentBlock(m); if (b) { blocks.push({ type: "text", text: "Uploaded study material:" }); blocks.push(b); } });
-  return extractJSON(await callClaude(system, blocks));
+  return extractJSON(await callAI(system, blocks));
 }
 
 async function generatePracticeQuiz({ subject, chapter, topic, difficulty, spec }) {
@@ -206,7 +209,8 @@ async function generatePracticeQuiz({ subject, chapter, topic, difficulty, spec 
     'ONLY compact JSON, no markdown fences: {"questions": [{"type":"mcq"|"tf"|"fill"|"subjective","marks":number,' +
     '"question":string,"options"?:[string,string,string,string],"correctIndex"?:number,"correctAnswer"?:boolean|string,' +
     '"modelAnswer"?:string,"markingPoints"?:[string],"explanation":string}]}';
-  return extractJSON(await callClaude(system, [{ type: "text", text: "Generate the quiz now." }]));
+  const parsed = extractJSON(await callAI(system, [{ type: "text", text: "Generate the quiz now." }]));
+  return Array.isArray(parsed) ? { questions: parsed } : parsed;
 }
 
 function isAIReadable(fileMeta) { return !!fileMeta && (fileMeta.mediaType === "application/pdf" || (fileMeta.mediaType || "").startsWith("image/")); }
@@ -228,7 +232,7 @@ async function evaluateAnswerSheetAI({ subject, chapter, maxMarks, questionPaper
   if (reference) { const rf = fileToContentBlock(reference); if (rf) blocks.push({ type: "text", text: "REFERENCE MATERIAL:" }, rf); }
   const asBlock = fileToContentBlock(answerSheet);
   blocks.push({ type: "text", text: "STUDENT ANSWER SHEET:" }, asBlock, { type: "text", text: "Evaluate now." });
-  return extractJSON(await callClaude(system, blocks.filter(Boolean)));
+  return extractJSON(await callAI(system, blocks.filter(Boolean)));
 }
 
 /* ============================== GRADING (programmatic) ============================== */
