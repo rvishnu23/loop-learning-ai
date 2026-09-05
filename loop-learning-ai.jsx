@@ -388,17 +388,6 @@ function LoopSteps() { const steps = ["Assess", "Analyse", "Improve", "Reassess"
 
 function AuthGate({ db, setDb, onLogin }) {
   const [mode, setMode] = useState("teacher");
-  const [seeding, setSeeding] = useState(false);
-  const [seedError, setSeedError] = useState("");
-  const loadDemo = async () => {
-    setSeeding(true); setSeedError("");
-    try {
-      const existing = db.teacherAccounts.find((t) => t.username === "demo.teacher");
-      if (existing) { onLogin({ type: "teacher", id: existing.id }); return; }
-      const seeded = await seedDemoWorkspace(db); await setDb(seeded); onLogin({ type: "teacher", id: seeded.teacherAccounts[seeded.teacherAccounts.length - 1].id });
-    } catch (e) { setSeedError("Could not load demo data. Please try again."); }
-    setSeeding(false);
-  };
   return (
     <div className="min-h-[600px] flex flex-col items-center justify-center px-6 py-12" style={{ background: COLORS.bg }}>
       <div className="flex items-center gap-2 mb-2"><LoopLogo size={26} /><span className="text-2xl font-black tracking-tight text-indigo-950">Loop Learning AI</span></div>
@@ -408,13 +397,6 @@ function AuthGate({ db, setDb, onLogin }) {
         <button onClick={() => setMode("student")} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition ${mode === "student" ? "bg-white shadow-sm text-teal-700" : "text-stone-500"}`}>Student</button>
       </div>
       {mode === "teacher" ? <TeacherAuth db={db} setDb={setDb} onLogin={onLogin} /> : <StudentAuth db={db} onLogin={onLogin} />}
-      <Card className="p-4 w-full max-w-sm border-teal-200 bg-teal-50/60 space-y-2">
-        <div className="text-sm font-bold text-teal-900">Explore a demo workspace</div>
-        <div className="text-xs text-teal-800">Loads sample classes, students, assessments, scores, and practice history into this browser.</div>
-        <PrimaryButton className="w-full justify-center bg-teal-700 hover:bg-teal-800" icon={seeding ? Loader2 : Sparkles} disabled={seeding} onClick={loadDemo}>{seeding ? "Loading demo data…" : "Load Demo Workspace"}</PrimaryButton>
-        <div className="text-[11px] text-teal-700">Teacher: <b>demo.teacher</b> / <b>demo1234</b> · Student: <b>alice1</b> / <b>student123</b></div>
-        {seedError && <div className="text-xs text-rose-600">{seedError}</div>}
-      </Card>
     </div>
   );
 }
