@@ -103,6 +103,48 @@ const makeSalt = () => uid() + uid();
 async function hashPassword(password, salt) { return sha256Hex(salt + "::" + password); }
 async function verifyPassword(password, salt, hash) { return (await hashPassword(password, salt)) === hash; }
 
+async function seedDemoWorkspace(db) {
+  const teacherId = uid(); const classId = uid(); const mathsId = uid(); const scienceId = uid();
+  const aliceId = uid(); const benId = uid(); const chapterOneId = uid(); const chapterTwoId = uid();
+  const teacherSalt = makeSalt(); const studentSalt = makeSalt();
+  const teacher = { id: teacherId, name: "Demo Teacher", username: "demo.teacher", salt: teacherSalt, passwordHash: await hashPassword("demo1234", teacherSalt) };
+  const students = [
+    { id: aliceId, name: "Alice Johnson", rollNo: "01", classId, username: "alice1", salt: studentSalt, passwordHash: await hashPassword("student123", studentSalt), disabled: false },
+    { id: benId, name: "Ben Williams", rollNo: "02", classId, username: "ben1", salt: studentSalt, passwordHash: await hashPassword("student123", studentSalt), disabled: false },
+  ];
+  const questions = [
+    { id: uid(), type: "mcq", marks: 1, topic: "Linear equations", difficulty: "easy", question: "Solve 2x + 5 = 13.", options: ["2", "4", "6", "9"], correctIndex: 1, explanation: "Subtract 5, then divide by 2." },
+    { id: uid(), type: "mcq", marks: 1, topic: "Factorisation", difficulty: "medium", question: "Factorise x² - 9.", options: ["(x-3)(x+3)", "(x-9)(x+1)", "(x-3)²", "(x+9)(x-1)"], correctIndex: 0, explanation: "Use the difference of squares identity." },
+    { id: uid(), type: "tf", marks: 1, topic: "Linear equations", difficulty: "easy", question: "The graph of y = 2x + 1 has gradient 2.", correctAnswer: true, explanation: "In y = mx + c, m is the gradient." },
+    { id: uid(), type: "fill", marks: 1, topic: "Factorisation", difficulty: "medium", question: "The common factor of 6x and 9 is ____.", correctAnswer: "3", explanation: "Three divides both 6x and 9." },
+  ];
+  const makeAssessment = (id, chapter, createdAt) => ({ id, classId, subjectId: mathsId, subjectName: "Mathematics", chapter, topics: ["Linear equations", "Factorisation"], questionTypes: ["mcq", "tf", "fill"], difficulty: "Mixed", durationMinutes: 15, instructions: "Use this diagnostic to identify topics for practice.", questions, status: "closed", quizCode: null, createdAt });
+  const assessmentOne = makeAssessment(chapterOneId, "Algebra Basics", "2026-08-20T09:00:00.000Z");
+  const assessmentTwo = makeAssessment(chapterTwoId, "Algebra Review", "2026-09-01T09:00:00.000Z");
+  const makeAttempt = (id, assessmentId, studentId, score, topics, submittedAt) => ({ id, assessmentId, studentId, status: "submitted", answers: { 0: score > 2 ? 1 : 0, 1: score > 3 ? 0 : 1, 2: score > 1, 3: score > 3 ? "3" : "6" }, score, maxScore: 4, topics, submittedAt });
+  const strong = [{ topic: "Linear equations", percent: 100, ...classify(100, db.thresholds) }, { topic: "Factorisation", percent: 75, ...classify(75, db.thresholds) }];
+  const mixed = [{ topic: "Linear equations", percent: 50, ...classify(50, db.thresholds) }, { topic: "Factorisation", percent: 25, ...classify(25, db.thresholds) }];
+  const attempts = [
+    makeAttempt(uid(), chapterOneId, aliceId, 3, mixed, "2026-08-21T09:30:00.000Z"),
+    makeAttempt(uid(), chapterOneId, benId, 2, mixed, "2026-08-21T09:35:00.000Z"),
+    makeAttempt(uid(), chapterTwoId, aliceId, 4, strong, "2026-09-02T09:30:00.000Z"),
+    makeAttempt(uid(), chapterTwoId, benId, 3, mixed, "2026-09-02T09:35:00.000Z"),
+  ];
+  return {
+    ...db,
+    teacherAccounts: [...db.teacherAccounts, teacher],
+    classes: [...db.classes, { id: classId, name: "10", section: "A", year: "2026", teacherId }],
+    students: [...db.students, ...students],
+    subjects: [...db.subjects, { id: mathsId, name: "Mathematics" }, { id: scienceId, name: "Science" }],
+    assessments: [...db.assessments, assessmentOne, assessmentTwo],
+    quizAttempts: [...db.quizAttempts, ...attempts],
+    practiceSessions: [...db.practiceSessions,
+      { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Linear equations", difficulty: "Medium", score: 3, total: 4, timestamp: "2026-08-25T10:00:00.000Z" },
+      { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Factorisation", difficulty: "Easy", score: 4, total: 4, timestamp: "2026-09-03T10:00:00.000Z" },
+    ],
+  };
+}
+
 /* ============================== AI CALLS ============================== */
 
 function fileToContentBlock(fileObj) {
@@ -348,6 +390,17 @@ function LoopSteps() { const steps = ["Assess", "Analyse", "Improve", "Reassess"
 
 function AuthGate({ db, setDb, onLogin }) {
   const [mode, setMode] = useState("teacher");
+  const [seeding, setSeeding] = useState(false);
+  const [seedError, setSeedError] = useState("");
+  const loadDemo = async () => {
+    setSeeding(true); setSeedError("");
+    try {
+      const existing = db.teacherAccounts.find((t) => t.username === "demo.teacher");
+      if (existing) { onLogin({ type: "teacher", id: existing.id }); return; }
+      const seeded = await seedDemoWorkspace(db); await setDb(seeded); onLogin({ type: "teacher", id: seeded.teacherAccounts[seeded.teacherAccounts.length - 1].id });
+    } catch (e) { setSeedError("Could not load demo data. Please try again."); }
+    setSeeding(false);
+  };
   return (
     <div className="min-h-[600px] flex flex-col items-center justify-center px-6 py-12" style={{ background: COLORS.bg }}>
       <div className="flex items-center gap-2 mb-2"><LoopLogo size={26} /><span className="text-2xl font-black tracking-tight text-indigo-950">Loop Learning AI</span></div>
@@ -357,6 +410,13 @@ function AuthGate({ db, setDb, onLogin }) {
         <button onClick={() => setMode("student")} className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition ${mode === "student" ? "bg-white shadow-sm text-teal-700" : "text-stone-500"}`}>Student</button>
       </div>
       {mode === "teacher" ? <TeacherAuth db={db} setDb={setDb} onLogin={onLogin} /> : <StudentAuth db={db} onLogin={onLogin} />}
+      <Card className="p-4 w-full max-w-sm border-teal-200 bg-teal-50/60 space-y-2">
+        <div className="text-sm font-bold text-teal-900">Explore a demo workspace</div>
+        <div className="text-xs text-teal-800">Loads sample classes, students, assessments, scores, and practice history into this browser.</div>
+        <PrimaryButton className="w-full justify-center bg-teal-700 hover:bg-teal-800" icon={seeding ? Loader2 : Sparkles} disabled={seeding} onClick={loadDemo}>{seeding ? "Loading demo data…" : "Load Demo Workspace"}</PrimaryButton>
+        <div className="text-[11px] text-teal-700">Teacher: <b>demo.teacher</b> / <b>demo1234</b> · Student: <b>alice1</b> / <b>student123</b></div>
+        {seedError && <div className="text-xs text-rose-600">{seedError}</div>}
+      </Card>
     </div>
   );
 }
