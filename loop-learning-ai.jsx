@@ -53,37 +53,35 @@ function makeQuizCode(subjectName, existingCodes) {
 
 async function loadDB() {
   try {
-    const res = window.storage?.get ? await window.storage.get(DB_KEY, true) : { value: localStorage.getItem(DB_KEY) };
-    if (!res?.value) return emptyDB();
-    return { ...emptyDB(), ...JSON.parse(res.value) };
+    const response = await fetch("/api/db");
+    if (!response.ok) throw new Error("Database unavailable");
+    const data = await response.json();
+    return { ...emptyDB(), ...(data.db || {}) };
+  } catch (e) {
+    try { const value = localStorage.getItem(DB_KEY); return value ? { ...emptyDB(), ...JSON.parse(value) } : emptyDB(); }
+    catch (storageError) { return emptyDB(); }
   }
-  catch (e) { return emptyDB(); }
 }
 async function saveDB(db) {
   try {
-    if (window.storage?.set) await window.storage.set(DB_KEY, JSON.stringify(db), true);
-    else localStorage.setItem(DB_KEY, JSON.stringify(db));
+    const response = await fetch("/api/db", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ db }) });
+    if (!response.ok) throw new Error("Database unavailable");
     return true;
-  }
-  catch (e) { console.error("Storage error", e); return false; }
+  } catch (e) { console.error("Database error", e); return false; }
 }
 async function saveFile(id, fileObj) {
   try {
-    const key = "loop_file_" + id;
-    if (window.storage?.set) await window.storage.set(key, JSON.stringify(fileObj), true);
-    else localStorage.setItem(key, JSON.stringify(fileObj));
-    return true;
-  }
-  catch (e) { return false; }
+    const response = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, file: fileObj }) });
+    return response.ok;
+  } catch (e) { return false; }
 }
 async function getFile(id) {
   if (!id) return null;
   try {
-    const key = "loop_file_" + id;
-    const res = window.storage?.get ? await window.storage.get(key, true) : { value: localStorage.getItem(key) };
-    return res?.value ? JSON.parse(res.value) : null;
-  }
-  catch (e) { return null; }
+    const response = await fetch("/api/files?id=" + encodeURIComponent(id));
+    if (!response.ok) return null;
+    return (await response.json()).file || null;
+  } catch (e) { return null; }
 }
 function fileToPayload(file) {
   return new Promise((resolve, reject) => {
