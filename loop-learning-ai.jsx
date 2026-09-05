@@ -1586,6 +1586,7 @@ function PersonalAITutor({ db, setDb, student }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
   const subject = db.subjects.find((s) => s.id === subjectId);
   const myMaterials = db.studentMaterials.filter((m) => m.studentId === student.id).slice(-4);
 
@@ -1599,13 +1600,22 @@ function PersonalAITutor({ db, setDb, student }) {
     setUploading(false);
   };
   const removeMaterial = async (id) => setDb({ ...db, studentMaterials: db.studentMaterials.filter((m) => m.id !== id) });
+  const attachToMessage = async (file) => {
+    setUploading(true);
+    try {
+      const payload = await fileToPayload(file);
+      setPendingAttachments((files) => [...files, payload]);
+    } catch (e) { /* ignore unreadable files */ }
+    setUploading(false);
+  };
 
   const send = async (text) => {
     const q = (text ?? input).trim(); if (!q) return;
-    setMessages((m) => [...m, { role: "user", text: q }]); setInput(""); setLoading(true);
+    const attachments = pendingAttachments;
+    setMessages((m) => [...m, { role: "user", text: q, attachments: attachments.map((file) => file.name) }]); setInput(""); setPendingAttachments([]); setLoading(true);
     try {
       const files = await Promise.all(myMaterials.slice(-2).map((m) => getFile(m.fileId)));
-      const result = await askDoubt({ subject: subject?.name, topic, question: q, materials: files.filter(Boolean) });
+      const result = await askDoubt({ subject: subject?.name, topic, question: q, materials: [...attachments, ...files.filter(Boolean)] });
       setMessages((m) => [...m, { role: "ai", text: result.explanation, visual: result.visual }]);
     } catch (e) { setMessages((m) => [...m, { role: "ai", text: e?.message || "AI is temporarily unavailable. Please try again in a moment." }]); }
     setLoading(false);
@@ -1628,10 +1638,11 @@ function PersonalAITutor({ db, setDb, student }) {
       <div className="flex flex-wrap gap-1.5">{QUICK_ACTIONS.map((a) => <button key={a} onClick={() => send(a + (topic ? ` (${topic})` : ""))} className="px-2.5 py-1 rounded-full text-xs font-medium border border-stone-200 text-stone-600 hover:border-indigo-300 hover:text-indigo-700">{a}</button>)}</div>
       <Card className="p-4 h-96 overflow-auto flex flex-col gap-3">
         {messages.length === 0 && <div className="text-sm text-stone-400 m-auto text-center">Ask a question, or tap a quick action above.</div>}
-        {messages.map((m, i) => (<div key={i} className={`max-w-[90%] ${m.role === "user" ? "self-end" : "self-start"}`}><div className={`px-3 py-2 rounded-xl text-sm ${m.role === "user" ? "bg-indigo-700 text-white" : "bg-stone-100 text-stone-700"}`}>{m.text}</div>{m.role === "ai" && <VisualBlock visual={m.visual} />}</div>))}
+        {messages.map((m, i) => (<div key={i} className={`max-w-[90%] ${m.role === "user" ? "self-end" : "self-start"}`}><div className={`px-3 py-2 rounded-xl text-sm ${m.role === "user" ? "bg-indigo-700 text-white" : "bg-stone-100 text-stone-700"}`}>{m.text}{m.attachments?.length > 0 && <div className="mt-1 text-[11px] opacity-80">Attached: {m.attachments.join(", ")}</div>}</div>{m.role === "ai" && <VisualBlock visual={m.visual} />}</div>))}
         {loading && <div className="self-start text-stone-400 text-sm flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Thinking…</div>}
       </Card>
-      <div className="flex gap-2"><TextInput placeholder="Type your question…" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} /><PrimaryButton icon={Send} onClick={() => send()} disabled={loading}>Ask</PrimaryButton></div>
+      {pendingAttachments.length > 0 && <div className="flex flex-wrap gap-1.5">{pendingAttachments.map((file, index) => <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-700"><Paperclip size={11} />{file.name}<button type="button" onClick={() => setPendingAttachments((files) => files.filter((_, fileIndex) => fileIndex !== index))} className="text-indigo-400 hover:text-rose-600" aria-label={`Remove ${file.name}`}><X size={12} /></button></span>)}</div>}
+      <div className="flex gap-2 items-center"><FileUploadChip onFile={attachToMessage} busy={uploading || loading} /><TextInput placeholder="Type your question…" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} /><PrimaryButton icon={Send} onClick={() => send()} disabled={loading}>Ask</PrimaryButton></div>
     </div>
   );
 }
