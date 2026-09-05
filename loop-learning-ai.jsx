@@ -56,9 +56,15 @@ async function loadDB() {
     const response = await fetch("/api/db");
     if (!response.ok) throw new Error("Database unavailable");
     const data = await response.json();
-    return { ...emptyDB(), ...(data.db || {}) };
+    const db = { ...emptyDB(), ...(data.db || {}) };
+    if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && db.students.length < 6) { const expanded = await expandDemoWorkspace(db); await saveDB(expanded); return expanded; }
+    return db;
   } catch (e) {
-    try { const value = localStorage.getItem(DB_KEY); return value ? { ...emptyDB(), ...JSON.parse(value) } : emptyDB(); }
+    try {
+      const value = localStorage.getItem(DB_KEY); const db = value ? { ...emptyDB(), ...JSON.parse(value) } : emptyDB();
+      if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && db.students.length < 6) { const expanded = await expandDemoWorkspace(db); try { localStorage.setItem(DB_KEY, JSON.stringify(expanded)); } catch (storageError) { /* keep in memory */ } return expanded; }
+      return db;
+    }
     catch (storageError) { return emptyDB(); }
   }
 }
@@ -141,6 +147,29 @@ async function seedDemoWorkspace(db) {
       { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Factorisation", difficulty: "Easy", score: 4, total: 4, timestamp: "2026-09-03T10:00:00.000Z" },
     ],
   };
+}
+
+async function expandDemoWorkspace(db) {
+  const demoTeacher = db.teacherAccounts.find((t) => t.username === "demo.teacher");
+  const classRecord = db.classes.find((c) => c.teacherId === demoTeacher?.id) || db.classes[0];
+  if (!demoTeacher || !classRecord) return db;
+  const passwordSalt = makeSalt(); const passwordHash = await hashPassword("student123", passwordSalt);
+  const names = [["Chloe Patel", "03", "chloe1"], ["Daniel Lee", "04", "daniel1"], ["Eva Martin", "05", "eva1"], ["Farah Khan", "06", "farah1"]];
+  const addedStudents = names.map(([name, rollNo, username]) => ({ id: uid(), name, rollNo, classId: classRecord.id, username, salt: passwordSalt, passwordHash, disabled: false }));
+  const students = [...db.students, ...addedStudents];
+  const subjects = [...db.subjects];
+  ["Science", "English", "Computer Science"].forEach((name) => { if (!subjects.some((s) => s.name === name)) subjects.push({ id: uid(), name }); });
+  const mathsAssessments = db.assessments.filter((a) => a.classId === classRecord.id);
+  const template = mathsAssessments[0];
+  const extraAssessments = subjects.filter((s) => ["Science", "English"].includes(s.name) && !db.assessments.some((a) => a.subjectId === s.id)).map((subject, index) => ({ ...template, id: uid(), subjectId: subject.id, subjectName: subject.name, chapter: index === 0 ? "Forces and Energy" : "Reading and Writing", createdAt: `2026-08-${String(24 + index).padStart(2, "0")}T09:00:00.000Z` }));
+  const allAssessments = [...db.assessments, ...extraAssessments];
+  const assessmentPool = allAssessments.filter((a) => a.classId === classRecord.id);
+  const attempts = [...db.quizAttempts];
+  addedStudents.forEach((student, studentIndex) => assessmentPool.forEach((assessment, assessmentIndex) => {
+    const score = Math.min(4, 1 + ((studentIndex + assessmentIndex) % 4));
+    attempts.push({ id: uid(), assessmentId: assessment.id, studentId: student.id, status: "submitted", answers: {}, score, maxScore: 4, topics: [{ topic: "Linear equations", percent: score >= 3 ? 75 : 50, ...classify(score >= 3 ? 75 : 50, db.thresholds) }, { topic: "Factorisation", percent: score >= 3 ? 75 : 25, ...classify(score >= 3 ? 75 : 25, db.thresholds) }], submittedAt: `2026-09-${String(3 + studentIndex).padStart(2, "0")}T09:00:00.000Z` });
+  }));
+  return { ...db, students, subjects, assessments: allAssessments, quizAttempts: attempts };
 }
 
 /* ============================== AI CALLS ============================== */
@@ -552,6 +581,7 @@ function TeacherOverview({ db, scope, setTab }) {
         {stat("Live quizzes", scope.assessments.filter((a) => a.status === "live").length, Radio, COLORS.rose)}
         {stat("Avg. diagnostic score", submitted.length ? Math.round(avg) + "%" : "—", TrendingUp, COLORS.amber)}
       </div>
+      <TeacherPerformanceCharts db={db} scope={scope} />
       <Card className="p-5">
         <div className="font-bold text-stone-700 mb-3 text-sm">Recent assessments</div>
         {recent.length === 0 && <EmptyHint text="No assessments yet. Create a class and students, then generate your first AI quiz." action={() => setTab("classes")} actionLabel="Create a class" />}
@@ -565,6 +595,22 @@ function TeacherOverview({ db, scope, setTab }) {
       </div>
     </div>
   );
+}
+function TeacherPerformanceCharts({ db, scope }) {
+  const subjectMap = {}; const studentMap = {};
+  scope.quizAttempts.filter((a) => a.status === "submitted").forEach((attempt) => {
+    const assessment = db.assessments.find((item) => item.id === attempt.assessmentId);
+    const student = scope.students.find((item) => item.id === attempt.studentId);
+    if (assessment) { subjectMap[assessment.subjectName] ||= []; subjectMap[assessment.subjectName].push((attempt.score / attempt.maxScore) * 100); }
+    if (student) { studentMap[student.name] ||= []; studentMap[student.name].push((attempt.score / attempt.maxScore) * 100); }
+  });
+  const subjectData = Object.entries(subjectMap).map(([subject, values]) => ({ subject, average: Math.round(values.reduce((a, b) => a + b, 0) / values.length) }));
+  const studentData = Object.entries(studentMap).map(([student, values]) => ({ student: student.split(" ")[0], average: Math.round(values.reduce((a, b) => a + b, 0) / values.length) }));
+  if (!subjectData.length && !studentData.length) return null;
+  return (<div className="grid lg:grid-cols-2 gap-4">
+    <Card className="p-4"><div className="font-bold text-stone-700 text-sm mb-1">Overall performance by subject</div><div className="text-xs text-stone-400 mb-3">Average diagnostic score across the class.</div><div style={{ width: "100%", height: 220 }}><ResponsiveContainer><BarChart data={subjectData}><CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} /><XAxis dataKey="subject" tick={{ fontSize: 10 }} /><YAxis domain={[0, 100]} tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [`${value}%`, "Average"]} /><Bar dataKey="average" fill={COLORS.teal} radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div></Card>
+    <Card className="p-4"><div className="font-bold text-stone-700 text-sm mb-1">Student-wise performance</div><div className="text-xs text-stone-400 mb-3">Average score across completed diagnostics.</div><div style={{ width: "100%", height: 220 }}><ResponsiveContainer><BarChart data={studentData}><CartesianGrid strokeDasharray="3 3" stroke={COLORS.line} /><XAxis dataKey="student" tick={{ fontSize: 10 }} /><YAxis domain={[0, 100]} tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [`${value}%`, "Average"]} /><Bar dataKey="average" fill={COLORS.indigo} radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div></Card>
+  </div>);
 }
 function QuickAction({ icon: Icon, label, onClick }) { return <button onClick={onClick} className="bg-white border border-stone-200 rounded-2xl p-4 flex items-center gap-3 hover:border-indigo-300 hover:shadow-sm transition text-left"><div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center"><Icon size={16} className="text-indigo-700" /></div><div className="text-sm font-semibold text-stone-700">{label}</div><ChevronRight size={15} className="ml-auto text-stone-300" /></button>; }
 
