@@ -32,12 +32,16 @@ export default async function handler(request, response) {
     let body = {};
     let upstream;
     for (const candidateModel of models) {
-      upstream = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      body = await upstream.json().catch(() => ({}));
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        upstream = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidateModel)}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        body = await upstream.json().catch(() => ({}));
+        if (upstream.ok || ![429, 500, 502, 503, 504].includes(upstream.status)) break;
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 250));
+      }
       if (upstream.ok || ![429, 500, 502, 503, 504].includes(upstream.status)) break;
     }
     if (!upstream?.ok) {

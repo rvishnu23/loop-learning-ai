@@ -1498,7 +1498,7 @@ function PersonalPractice({ db, setDb, student, seedTopic }) {
     if (totalQuestions > 8) { setError("Keep the total to 8 questions or fewer for reliable generation."); return; }
     setLoading(true); setError(""); setQuiz(null); setSubmitted(false); setAnswers({}); setEvaluations({});
     try { const spec = selectedTypes.map((id) => ({ id, count: countPerType })); const q = await generatePracticeQuiz({ subject: subject.name, chapter, topic, difficulty, spec }); setQuiz(q.questions || []); }
-    catch (e) { setError("Could not generate a quiz right now. Please try again."); }
+    catch (e) { setError(e?.message || "AI is temporarily unavailable. Please try again in a moment."); }
     setLoading(false);
   };
   const objectiveScore = () => quiz ? quiz.reduce((acc, q, i) => acc + (q.type === "subjective" ? 0 : gradeQuestion(q, answers[i])), 0) : 0;
@@ -1569,7 +1569,7 @@ function PersonalAITutor({ db, setDb, student }) {
       const files = await Promise.all(myMaterials.slice(-2).map((m) => getFile(m.fileId)));
       const result = await askDoubt({ subject: subject?.name, topic, question: q, materials: files.filter(Boolean) });
       setMessages((m) => [...m, { role: "ai", text: result.explanation, visual: result.visual }]);
-    } catch (e) { setMessages((m) => [...m, { role: "ai", text: "Sorry, I couldn't process that right now. Please try again." }]); }
+    } catch (e) { setMessages((m) => [...m, { role: "ai", text: e?.message || "AI is temporarily unavailable. Please try again in a moment." }]); }
     setLoading(false);
   };
 
