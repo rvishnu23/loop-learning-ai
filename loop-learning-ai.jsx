@@ -17,7 +17,7 @@ import {
 
 const DB_KEY = "loop_learning_db_v3";
 const FILES_KEY = "loop_learning_files_v3";
-const DEMO_DATA_VERSION = 2;
+const DEMO_DATA_VERSION = 3;
 const AI_PROVIDER = "openrouter";
 const DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct";
 
@@ -76,11 +76,29 @@ function writeLocalStorageJSON(key, value) {
 async function loadDB() {
   try {
     const localDb = readLocalStorageJSON(DB_KEY);
-    if (localDb) return localDb;
+    if (localDb) {
+      if (!localDb.teacherAccounts?.length) {
+        const demoDb = await seedDemoWorkspace(emptyDB());
+        await saveDB(demoDb);
+        return demoDb;
+      }
+      if (localDb.teacherAccounts.some((t) => t.username === "demo.teacher") && (localDb.demoDataVersion || 0) < DEMO_DATA_VERSION) {
+        const expanded = await expandDemoWorkspace({ ...emptyDB(), ...localDb });
+        await saveDB(expanded);
+        return expanded;
+      }
+      return localDb;
+    }
     const response = await fetch("/api/db");
     if (!response.ok) throw new Error("Database unavailable");
     const data = await response.json();
     const db = { ...emptyDB(), ...(data.db || {}) };
+    if (db.teacherAccounts.length === 0) {
+      const demoDb = await seedDemoWorkspace(emptyDB());
+      await saveDB(demoDb);
+      writeLocalStorageJSON(DB_KEY, demoDb);
+      return demoDb;
+    }
     if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && (db.demoDataVersion || 0) < DEMO_DATA_VERSION) { const expanded = await expandDemoWorkspace(db); await saveDB(expanded); return expanded; }
     writeLocalStorageJSON(DB_KEY, db);
     return db;
@@ -138,7 +156,7 @@ async function hashPassword(password, salt) { return sha256Hex(salt + "::" + pas
 async function verifyPassword(password, salt, hash) { return (await hashPassword(password, salt)) === hash; }
 
 async function seedDemoWorkspace(db) {
-  const teacherId = uid(); const classId = uid(); const mathsId = uid(); const scienceId = uid();
+  const teacherId = uid(); const classId = uid(); const mathsId = uid(); const scienceId = uid(); const businessId = uid();
   const aliceId = uid(); const benId = uid(); const chapterOneId = uid(); const chapterTwoId = uid();
   const teacherSalt = makeSalt(); const studentSalt = makeSalt();
   const teacher = { id: teacherId, name: "Demo Teacher", username: "demo.teacher", salt: teacherSalt, passwordHash: await hashPassword("demo1234", teacherSalt) };
@@ -164,14 +182,20 @@ async function seedDemoWorkspace(db) {
     makeAttempt(uid(), chapterTwoId, aliceId, 4, strong, "2026-09-02T09:30:00.000Z"),
     makeAttempt(uid(), chapterTwoId, benId, 3, mixed, "2026-09-02T09:35:00.000Z"),
   ];
+  const officialAssessment = makeDemoOfficialAssessment(classId, businessId, aliceId);
+  await saveFile(officialAssessment.materials.questionPaper.fileId, officialAssessment.demoFiles.questionPaper);
+  await saveFile(officialAssessment.materials.answerKey.fileId, officialAssessment.demoFiles.answerKey);
+  await saveFile(officialAssessment.submissions[0].answerSheet.fileId, officialAssessment.demoFiles.answerSheet);
+  delete officialAssessment.demoFiles;
   return {
     ...db,
     teacherAccounts: [...db.teacherAccounts, teacher],
     classes: [...db.classes, { id: classId, name: "10", section: "A", year: "2026", teacherId }],
     students: [...db.students, ...students],
-    subjects: [...db.subjects, { id: mathsId, name: "Mathematics" }, { id: scienceId, name: "Science" }],
+    subjects: [...db.subjects, { id: mathsId, name: "Mathematics" }, { id: scienceId, name: "Science" }, { id: businessId, name: "Business Studies" }],
     assessments: [...db.assessments, assessmentOne, assessmentTwo],
     quizAttempts: [...db.quizAttempts, ...attempts],
+    officialAssessments: [...db.officialAssessments, officialAssessment],
     demoDataVersion: DEMO_DATA_VERSION,
     practiceSessions: [...db.practiceSessions,
       { id: uid(), studentId: aliceId, subject: "Mathematics", topic: "Linear equations", difficulty: "Medium", score: 3, total: 4, timestamp: "2026-08-25T10:00:00.000Z" },
@@ -184,7 +208,18 @@ async function expandDemoWorkspace(db) {
   const demoTeacher = db.teacherAccounts.find((t) => t.username === "demo.teacher");
   const classRecord = db.classes.find((c) => c.teacherId === demoTeacher?.id) || db.classes[0];
   if (!demoTeacher || !classRecord) return db;
-  if (db.students.length >= 6) return { ...db, demoDataVersion: DEMO_DATA_VERSION };
+  if (db.students.length >= 6) {
+    if (db.officialAssessments.some((assessment) => assessment.name === "Business Studies Unit Test")) return { ...db, demoDataVersion: DEMO_DATA_VERSION };
+    const alice = db.students.find((student) => student.username === "alice1");
+    const subject = db.subjects.find((item) => item.name === "Business Studies") || { id: uid(), name: "Business Studies" };
+    const officialAssessment = makeDemoOfficialAssessment(classRecord.id, subject.id, alice?.id);
+    const subjects = db.subjects.some((item) => item.id === subject.id) ? db.subjects : [...db.subjects, subject];
+    await saveFile(officialAssessment.materials.questionPaper.fileId, officialAssessment.demoFiles.questionPaper);
+    await saveFile(officialAssessment.materials.answerKey.fileId, officialAssessment.demoFiles.answerKey);
+    await saveFile(officialAssessment.submissions[0].answerSheet.fileId, officialAssessment.demoFiles.answerSheet);
+    delete officialAssessment.demoFiles;
+    return { ...db, subjects, officialAssessments: [...db.officialAssessments, officialAssessment], demoDataVersion: DEMO_DATA_VERSION };
+  }
   const passwordSalt = makeSalt(); const passwordHash = await hashPassword("student123", passwordSalt);
   const names = [["Chloe Patel", "03", "chloe1"], ["Daniel Lee", "04", "daniel1"], ["Eva Martin", "05", "eva1"], ["Farah Khan", "06", "farah1"]];
   const addedStudents = names.map(([name, rollNo, username]) => ({ id: uid(), name, rollNo, classId: classRecord.id, username, salt: passwordSalt, passwordHash, disabled: false }));
@@ -201,7 +236,41 @@ async function expandDemoWorkspace(db) {
     const score = Math.min(4, 1 + ((studentIndex + assessmentIndex) % 4));
     attempts.push({ id: uid(), assessmentId: assessment.id, studentId: student.id, status: "submitted", answers: {}, score, maxScore: 4, topics: [{ topic: "Linear equations", percent: score >= 3 ? 75 : 50, ...classify(score >= 3 ? 75 : 50, db.thresholds) }, { topic: "Factorisation", percent: score >= 3 ? 75 : 25, ...classify(score >= 3 ? 75 : 25, db.thresholds) }], submittedAt: `2026-09-${String(3 + studentIndex).padStart(2, "0")}T09:00:00.000Z` });
   }));
-  return { ...db, students, subjects, assessments: allAssessments, quizAttempts: attempts, demoDataVersion: DEMO_DATA_VERSION };
+  const businessSubject = subjects.find((subject) => subject.name === "Business Studies") || { id: uid(), name: "Business Studies" };
+  if (!subjects.some((subject) => subject.id === businessSubject.id)) subjects.push(businessSubject);
+  const alice = students.find((student) => student.username === "alice1");
+  const officialAssessment = makeDemoOfficialAssessment(classRecord.id, businessSubject.id, alice?.id);
+  await saveFile(officialAssessment.materials.questionPaper.fileId, officialAssessment.demoFiles.questionPaper);
+  await saveFile(officialAssessment.materials.answerKey.fileId, officialAssessment.demoFiles.answerKey);
+  await saveFile(officialAssessment.submissions[0].answerSheet.fileId, officialAssessment.demoFiles.answerSheet);
+  delete officialAssessment.demoFiles;
+  return { ...db, students, subjects, assessments: allAssessments, quizAttempts: attempts, officialAssessments: [...db.officialAssessments, officialAssessment], demoDataVersion: DEMO_DATA_VERSION };
+}
+
+function makeDemoPdf(name, lines) {
+  const text = lines.join("\\n");
+  const pdf = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length ${text.length + 45}>>stream\nBT /F1 12 Tf 50 740 Td (${text}) Tj ET\nendstream\nendobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF`;
+  return { name, mediaType: "application/pdf", data: btoa(pdf) };
+}
+
+function makeDemoOfficialAssessment(classId, subjectId, studentId) {
+  const questionPaper = makeDemoPdf("Business_Studies_Unit_Test.pdf", [
+    "Business Studies Unit Test", "Class 10A | Maximum marks: 80", "1. Define entrepreneurship - 10 marks", "2. Explain two functions of management - 10 marks",
+  ]);
+  const answerKey = makeDemoPdf("Business_Studies_Answer_Key.pdf", [
+    "Answer Key", "1. Entrepreneurship is the process of creating and managing a new venture.", "2. Planning sets objectives; organising allocates resources and responsibilities.",
+  ]);
+  const answerSheet = makeDemoPdf("Alice_Business_Studies_Answers.pdf", [
+    "Alice Johnson - Answer Sheet", "1. Starting a new business and taking the risk. Good definition, missing managing the venture.", "2. Planning decides goals. Organising gives work to people. Both functions identified.",
+  ]);
+  const questionPaperId = uid(); const answerKeyId = uid(); const answerSheetId = uid();
+  return {
+    id: uid(), name: "Business Studies Unit Test", classId, subjectId, subjectName: "Business Studies", chapter: "Full portion", maxMarks: 80,
+    status: "materials_uploaded", createdAt: "2026-09-05T09:00:00.000Z",
+    materials: { questionPaper: { fileId: questionPaperId, name: questionPaper.name, mediaType: questionPaper.mediaType }, answerKey: { fileId: answerKeyId, name: answerKey.name, mediaType: answerKey.mediaType }, reference: null },
+    submissions: studentId ? [{ id: uid(), studentId, answerSheet: { fileId: answerSheetId, name: answerSheet.name, mediaType: answerSheet.mediaType }, aiStatus: "pending", aiEvaluation: null, teacherFinal: null, publishedAt: null }] : [],
+    demoFiles: { questionPaper: { ...questionPaper, id: questionPaperId }, answerKey: { ...answerKey, id: answerKeyId }, answerSheet: { ...answerSheet, id: answerSheetId } },
+  };
 }
 
 /* ============================== AI CALLS ============================== */
@@ -337,13 +406,31 @@ async function evaluateAnswerSheetAI({ subject, chapter, maxMarks, questionPaper
     "brief feedback, and flag any likely learning difficulty. If a question was not attempted, say so and award 0. Keep " +
     "every text field under 16 words. Respond with ONLY compact JSON, no markdown fences: " +
     '{"questions": [{"questionNumber": number, "questionText": string, "maxMarks": number, "topic": string, ' +
-    '"studentAnswerSummary": string, "expectedAnswerSummary": string, "aiMarks": number, "feedback": string, ' +
+    '"studentAnswerSummary": string, "expectedAnswerSummary": string, "aiMarks": number, "feedback": string, "lostMarksReason": string, ' +
     '"learningDifficulty": string}], "totalAiMarks": number, "overallFeedback": string}';
   const blocks = [{ type: "text", text: "QUESTION PAPER:" }, fileToContentBlock(questionPaper), { type: "text", text: "ANSWER KEY:" }, fileToContentBlock(answerKey)].filter(Boolean);
   if (reference) { const rf = fileToContentBlock(reference); if (rf) blocks.push({ type: "text", text: "REFERENCE MATERIAL:" }, rf); }
   const asBlock = fileToContentBlock(answerSheet);
   blocks.push({ type: "text", text: "STUDENT ANSWER SHEET:" }, asBlock, { type: "text", text: "Evaluate now." });
   return extractJSON(await callAI(system, blocks.filter(Boolean)));
+}
+
+function normalizeAnswerEvaluation(result, assessmentMaxMarks) {
+  const maxMarks = Math.max(0, Number(assessmentMaxMarks) || 0);
+  const questions = Array.isArray(result?.questions) ? result.questions : [];
+  const capped = questions.map((question) => {
+    const questionMax = Math.max(0, Number(question.maxMarks) || 0);
+    const aiMarks = Math.min(questionMax, Math.max(0, Number(question.aiMarks) || 0));
+    return { ...question, maxMarks: questionMax, aiMarks };
+  });
+  const rawTotal = capped.reduce((total, question) => total + question.aiMarks, 0);
+  const scale = rawTotal > maxMarks && rawTotal > 0 ? maxMarks / rawTotal : 1;
+  const normalizedQuestions = capped.map((question) => ({
+    ...question,
+    aiMarks: Math.round(question.aiMarks * scale * 100) / 100,
+  }));
+  const totalAiMarks = Math.min(maxMarks, normalizedQuestions.reduce((total, question) => total + question.aiMarks, 0));
+  return { ...result, questions: normalizedQuestions, totalAiMarks: Math.round(totalAiMarks * 100) / 100 };
 }
 
 /* ============================== GRADING (programmatic) ============================== */
@@ -1208,7 +1295,17 @@ function OAFileSlot({ label, fileMeta, onUpload, onRemove, required }) {
 
 function OAUploadStep({ assessment, classStudents, update, onNext }) {
   const materials = assessment.materials;
-  const setMaterial = (key) => (fileMeta) => { const materials2 = { ...materials, [key]: fileMeta }; update({ materials: materials2, status: materials2.questionPaper && materials2.answerKey ? "materials_uploaded" : "draft" }); };
+  const setMaterial = (key) => (fileMeta) => {
+    const materials2 = { ...materials, [key]: fileMeta };
+    const submissions = assessment.submissions.map((submission) => ({
+      ...submission,
+      aiStatus: submission.answerSheet ? "pending" : "pending",
+      aiEvaluation: null,
+      teacherFinal: null,
+      publishedAt: null,
+    }));
+    update({ materials: materials2, submissions, status: materials2.questionPaper && materials2.answerKey ? "materials_uploaded" : "draft" });
+  };
   const removeMaterial = (key) => () => { const materials2 = { ...materials, [key]: null }; update({ materials: materials2, status: "draft" }); };
   const submissionFor = (studentId) => assessment.submissions.find((s) => s.studentId === studentId);
   const setAnswerSheet = (studentId) => async (fileMeta) => {
@@ -1266,7 +1363,8 @@ function OAEvaluateStep({ assessment, classStudents, update, onNext }) {
     try {
       const [qp, ak, rf, as] = await Promise.all([getFile(materials.questionPaper.fileId), getFile(materials.answerKey.fileId), materials.reference ? getFile(materials.reference.fileId) : Promise.resolve(null), getFile(sub.answerSheet.fileId)]);
       const result = await evaluateAnswerSheetAI({ subject: assessment.subjectName, chapter: assessment.chapter, maxMarks: assessment.maxMarks, questionPaper: qp, answerKey: ak, reference: rf, answerSheet: as });
-      await update({ submissions: assessment.submissions.map((s) => s.studentId === studentId ? { ...s, aiStatus: "done", aiEvaluation: result } : s), status: "ai_evaluating" });
+      const normalizedResult = normalizeAnswerEvaluation(result, assessment.maxMarks);
+      await update({ submissions: assessment.submissions.map((s) => s.studentId === studentId ? { ...s, aiStatus: "done", aiEvaluation: normalizedResult } : s), status: "ai_evaluating" });
     } catch (e) { await update({ submissions: assessment.submissions.map((s) => s.studentId === studentId ? { ...s, aiStatus: "error" } : s) }); }
     setBusyId(null);
   };
@@ -1292,19 +1390,34 @@ function OAEvaluateStep({ assessment, classStudents, update, onNext }) {
 
           <div className="space-y-3">
             {withSheets.map((sub) => { const student = classStudents.find((s) => s.id === sub.studentId); const initials = (student?.name || "Demo").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(); return (
-              <div key={sub.id} className="rounded-2xl border border-stone-200 bg-white p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">{initials || "D"}</div>
-                  <div className="text-2xl font-semibold text-stone-700">{student?.name || "Demo"}</div>
-                </div>
+              <div key={sub.id} className="rounded-2xl border border-stone-200 bg-white p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">{initials || "D"}</div>
+                    <div className="text-2xl font-semibold text-stone-700">{student?.name || "Demo"}</div>
+                  </div>
 
-                <div className="flex items-center gap-3">
-                  {sub.aiStatus === "done" && <Badge tone="teal">AI Evaluated · {sub.aiEvaluation?.totalAiMarks}/{assessment.maxMarks}</Badge>}
-                  {sub.aiStatus === "limited" && <Badge tone="amber">Teacher Verification Required — file type not readable</Badge>}
-                  {sub.aiStatus === "error" && <span className="text-rose-600 font-semibold">AI evaluation failed — retry</span>}
-                  {sub.aiStatus === "pending" && <Badge>Not evaluated</Badge>}
-                  <GhostButton icon={busyId === sub.studentId ? Loader2 : RefreshCw} onClick={() => runOne(sub.studentId)} disabled={busyId === sub.studentId} className={sub.aiStatus === "error" ? "border-stone-300 text-stone-700" : "border-stone-300 text-stone-700"}>{busyId === sub.studentId ? "Working…" : sub.aiStatus === "done" ? "Re-run" : "Run"}</GhostButton>
+                  <div className="flex items-center gap-3">
+                    {sub.aiStatus === "done" && <Badge tone="teal">AI Evaluated · {Math.min(Number(sub.aiEvaluation?.totalAiMarks) || 0, Number(assessment.maxMarks) || 0)}/{assessment.maxMarks}</Badge>}
+                    {sub.aiStatus === "limited" && <Badge tone="amber">Teacher Verification Required — file type not readable</Badge>}
+                    {sub.aiStatus === "error" && <span className="text-rose-600 font-semibold">AI evaluation failed — retry</span>}
+                    {sub.aiStatus === "pending" && <Badge>Not evaluated</Badge>}
+                    <GhostButton icon={busyId === sub.studentId ? Loader2 : RefreshCw} onClick={() => runOne(sub.studentId)} disabled={busyId === sub.studentId} className="border-stone-300 text-stone-700">{busyId === sub.studentId ? "Working…" : sub.aiStatus === "done" ? "Re-run" : "Run"}</GhostButton>
+                  </div>
                 </div>
+                {sub.aiStatus === "done" && sub.aiEvaluation && (
+                  <div className="border-t border-stone-100 pt-3 space-y-2">
+                    <div className="text-xs text-stone-500">Evidence used by AI: the uploaded question paper, answer key, reference material, and this student’s answer sheet. Review each item before publishing.</div>
+                    {sub.aiEvaluation.questions?.map((question) => (
+                      <div key={question.questionNumber} className="rounded-xl bg-stone-50 border border-stone-100 p-3 text-xs space-y-1">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-stone-700"><span>Q{question.questionNumber} · {question.topic || "General"}</span><span>{question.aiMarks}/{question.maxMarks} marks</span></div>
+                        <div><span className="text-stone-400">Student answer: </span>{question.studentAnswerSummary || "Not identified"}</div>
+                        <div><span className="text-stone-400">Expected: </span>{question.expectedAnswerSummary || "Not provided"}</div>
+                        <div className="text-amber-700"><span className="font-semibold">Why marks were missed: </span>{question.lostMarksReason || question.feedback || "No specific reason returned; teacher review required."}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ); })}
           </div>
@@ -1354,17 +1467,18 @@ function OAVerifyStudent({ assessment, submission, student, update, onBack }) {
   const hasAI = submission.aiStatus === "done" && submission.aiEvaluation;
   const [rows, setRows] = useState(() => hasAI ? submission.aiEvaluation.questions.map((q) => {
     const prior = submission.teacherFinal?.questions?.find((x) => x.questionNumber === q.questionNumber);
-    return { ...q, finalMarks: prior ? prior.finalMarks : q.aiMarks, comment: prior?.comment || "" };
+    const finalMarks = prior ? prior.finalMarks : q.aiMarks;
+    return { ...q, finalMarks: Math.min(Number(q.maxMarks) || 0, Math.max(0, Number(finalMarks) || 0)), comment: prior?.comment || "" };
   }) : []);
   const [manualTotal, setManualTotal] = useState(submission.teacherFinal?.totalMarks ?? "");
   const [comment, setComment] = useState(submission.teacherFinal?.comment || "");
   const updateRow = (i, patch) => setRows((rs) => rs.map((r, idx) => idx === i ? { ...r, ...patch } : r));
   const acceptAI = () => setRows((rs) => rs.map((r) => ({ ...r, finalMarks: r.aiMarks })));
-  const totalFinal = hasAI ? rows.reduce((s, r) => s + (Number(r.finalMarks) || 0), 0) : (Number(manualTotal) || 0);
+  const totalFinal = Math.min(Number(assessment.maxMarks) || 0, hasAI ? rows.reduce((s, r) => s + Math.min(Number(r.maxMarks) || 0, Math.max(0, Number(r.finalMarks) || 0)), 0) : Math.max(0, Number(manualTotal) || 0));
 
   const publish = async () => {
     const teacherFinal = hasAI
-      ? { questions: rows.map((r) => ({ questionNumber: r.questionNumber, finalMarks: Number(r.finalMarks) || 0, comment: r.comment })), totalMarks: totalFinal, comment }
+      ? { questions: rows.map((r) => ({ questionNumber: r.questionNumber, finalMarks: Math.min(Number(r.maxMarks) || 0, Math.max(0, Number(r.finalMarks) || 0)), comment: r.comment })), totalMarks: totalFinal, comment }
       : { questions: [], totalMarks: totalFinal, comment };
     await update({ submissions: assessment.submissions.map((s) => s.id === submission.id ? { ...s, teacherFinal, publishedAt: new Date().toISOString() } : s), status: "verification" });
     onBack();
