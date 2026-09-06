@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loop Learning AI | User Manual and Technical Documentation</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 17mm; }
+  :root { --ink:#172033; --muted:#5e6878; --indigo:#3730a3; --teal:#087f73; --amber:#b45309; --rose:#be123c; --line:#dfe3ea; --soft:#f5f7fb; }
+  * { box-sizing:border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color:var(--ink); font-size:10.2pt; line-height:1.48; margin:0; }
+  h1,h2,h3 { line-height:1.15; margin:0 0 9px; }
+  h1 { font-size:30pt; letter-spacing:-.3px; }
+  h2 { font-size:18pt; color:var(--indigo); border-bottom:2px solid var(--line); padding-bottom:5px; margin-top:22px; }
+  h3 { font-size:12.5pt; color:#25304a; margin-top:15px; }
+  p { margin:6px 0 9px; }
+  ul,ol { margin:6px 0 10px 20px; padding:0; }
+  li { margin:3px 0; }
+  code { font-family:Consolas, monospace; font-size:9pt; background:#eef1f6; padding:1px 4px; border-radius:3px; }
+  .cover { min-height:245mm; display:flex; flex-direction:column; justify-content:space-between; page-break-after:always; }
+  .brand { display:flex; align-items:center; gap:10px; color:var(--indigo); font-weight:700; letter-spacing:.6px; }
+  .mark { width:58px; height:58px; border:6px solid var(--indigo); border-radius:50%; position:relative; }
+  .mark:after { content:""; position:absolute; width:19px; height:6px; background:var(--teal); right:-13px; top:22px; transform:rotate(35deg); }
+  .kicker { color:var(--teal); text-transform:uppercase; letter-spacing:2px; font-size:9pt; font-weight:700; margin-top:58mm; }
+  .lead { color:var(--muted); font-size:14pt; max-width:145mm; }
+  .cover-band { border-top:4px solid var(--indigo); padding-top:12px; color:var(--muted); }
+  .pill { display:inline-block; background:#e8e9ff; color:var(--indigo); padding:4px 8px; border-radius:12px; font-weight:700; font-size:8.5pt; margin:2px 3px 2px 0; }
+  .teal { background:#d9f6f0; color:var(--teal); }
+  .amber { background:#fff0d7; color:var(--amber); }
+  .rose { background:#ffe1e7; color:var(--rose); }
+  .callout { background:var(--soft); border-left:4px solid var(--indigo); padding:10px 12px; margin:10px 0; page-break-inside:avoid; }
+  .callout.tealbox { border-color:var(--teal); }
+  .callout.amberbox { border-color:var(--amber); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .card { border:1px solid var(--line); padding:10px 11px; page-break-inside:avoid; }
+  .card h3 { margin-top:0; }
+  table { border-collapse:collapse; width:100%; margin:8px 0 12px; page-break-inside:avoid; }
+  th,td { border:1px solid var(--line); padding:6px 7px; text-align:left; vertical-align:top; }
+  th { background:#eef1f6; color:#27314a; font-size:9pt; }
+  .small { color:var(--muted); font-size:8.8pt; }
+  .pagebreak { page-break-before:always; }
+  .toc a { color:var(--indigo); text-decoration:none; }
+  .flow { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin:10px 0; }
+  .step { border:1px solid #cdd2fa; background:#f0f1ff; color:var(--indigo); padding:7px 9px; font-weight:700; border-radius:6px; }
+  .arrow { color:var(--teal); font-weight:700; }
+  .footer-note { margin-top:16px; padding-top:7px; border-top:1px solid var(--line); color:var(--muted); font-size:8.5pt; }
+  .feature-strip { display:grid; grid-template-columns:1.25fr 1fr; gap:10px; margin:13px 0 14px; page-break-inside:avoid; }
+  .screen { border:1px solid #cfd5e3; border-radius:8px; overflow:hidden; background:#fff; box-shadow:0 4px 12px rgba(31,41,72,.08); }
+  .screen-top { height:20px; background:#252a64; display:flex; align-items:center; gap:4px; padding:0 8px; }
+  .screen-top i { display:block; width:5px; height:5px; border-radius:50%; background:#bfc6ff; }
+  .screen-body { padding:9px; }
+  .screen-title { font-size:8.5pt; font-weight:800; color:#26304b; margin-bottom:7px; }
+  .mini-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+  .mini-stat { background:#f1f3ff; border:1px solid #e1e4fa; padding:6px; border-radius:5px; }
+  .mini-stat b { display:block; font-size:12pt; color:var(--indigo); }
+  .mini-stat span,.mini-label { display:block; font-size:6.8pt; color:var(--muted); }
+  .mini-bars { display:flex; align-items:end; gap:5px; height:48px; margin-top:8px; padding:0 8px; border-bottom:1px solid #dfe3ea; }
+  .mini-bars i { flex:1; background:var(--teal); border-radius:3px 3px 0 0; }
+  .mini-bars i:nth-child(2) { height:75%; background:#818cf8; }
+  .mini-bars i:nth-child(1) { height:45%; }
+  .mini-bars i:nth-child(3) { height:92%; background:#f59e0b; }
+  .mini-bars i:nth-child(4) { height:62%; background:#fb7185; }
+  .profile-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid #edf0f4; font-size:7.3pt; }
+  .profile-row b { color:var(--teal); }
+  .tutor-bubble { background:#eef1ff; color:#30367b; padding:8px; border-radius:6px; font-size:7.5pt; line-height:1.35; margin:5px 0; }
+  .user-bubble { background:#d9f6f0; color:#11665e; padding:7px; border-radius:6px; font-size:7.5pt; margin:5px 0 5px 18px; }
+  .snapshot-caption { padding:6px 9px; background:#f7f8fb; color:var(--muted); font-size:7.5pt; border-top:1px solid #e6e9ef; }
+  @media print { a { color:inherit; text-decoration:none; } h2 { page-break-after:avoid; } }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div>
+    <div class="brand"><span class="mark"></span> LOOP LEARNING AI</div>
+    <div class="kicker">Hackathon Submission Documentation</div>
+    <h1> User Manual &<br>Technical Documentation</h1>
+    <p class="lead">An evidence-led learning loop that turns assessment results into targeted practice, teacher action, and measurable improvement.</p>
+    <div style="margin-top:18px"><span class="pill">Assess</span><span class="pill teal">Analyse</span><span class="pill amber">Improve</span><span class="pill rose">Reassess</span></div>
+  </div>
+  <div class="cover-band"><b>Project:</b> Loop Learning AI<br><b>Document version:</b> 1.0 &nbsp; | &nbsp; <b>Prepared:</b> September 2026</div>
+</section>
+
+<section>
+<h2>Contents</h2>
+<ol class="toc">
+<li><a href="#overview">Product Overview</a> <span class="small">3</span></li>
+<li><a href="#quickstart">Quick Start and Demo</a> <span class="small">3</span></li>
+<li><a href="#teacher">Teacher Manual</a> <span class="small">4</span></li>
+<li><a href="#student">Student Manual</a> <span class="small">5</span></li>
+<li><a href="#official">Official Assessment Workflow</a> <span class="small">6</span></li>
+<li><a href="#ai">AI Behaviour and Safeguards</a> <span class="small">6</span></li>
+<li><a href="#stack">Technical Stack</a> <span class="small">7</span></li>
+<li><a href="#architecture">Architecture and Data</a> <span class="small">7</span></li>
+<li><a href="#deployment">Configuration and Deployment</a> <span class="small">8</span></li>
+<li><a href="#limitations">Prototype Boundaries and Roadmap</a> <span class="small">8</span></li>
+</ol>
+</section>
+
+<section class="pagebreak">
+<h2 id="overview">1. Product Overview</h2>
+<p>Loop Learning AI is a two-sided learning workspace for teachers and students. It keeps formative diagnosis, personal practice, and official assessment separate while connecting them through a repeatable improvement loop.</p>
+<div class="grid">
+<div class="card"><h3>For teachers</h3><p>Create classes, subjects, and student logins; generate and review diagnostic quizzes; run live assessments; inspect class and student learning patterns; and use AI-assisted marking for uploaded official answer sheets.</p></div>
+<div class="card"><h3>For students</h3><p>Join a teacher's live quiz, receive topic-level learning status, practise a weak topic privately, upload study material, and ask the Personal AI Tutor for explanations and worked guidance.</p></div>
+</div>
+<div class="callout tealbox"><b>The learning loop:</b> Assess with a diagnostic quiz, analyse topic-level results, improve through targeted practice and tutoring, then reassess to see whether the learning signal changes.</div>
+<h3>Feature snapshots</h3>
+<div class="feature-strip">
+  <div class="screen"><div class="screen-top"><i></i><i></i><i></i></div><div class="screen-body"><div class="screen-title">Teacher Dashboard · Classroom overview</div><div class="mini-grid"><div class="mini-stat"><b>6</b><span>Students</span></div><div class="mini-stat"><b>4</b><span>Assessments</span></div><div class="mini-stat"><b>72%</b><span>Class average</span></div></div><div class="mini-bars"><i></i><i></i><i></i><i></i></div><div class="mini-label" style="margin-top:5px">Topic performance and recommended teaching move</div></div><div class="snapshot-caption">Class-level signals turn results into an actionable next step.</div></div>
+  <div class="screen"><div class="screen-top"><i></i><i></i><i></i></div><div class="screen-body"><div class="screen-title">Student · Learning profile</div><div class="profile-row"><span>Linear equations</span><b>Strong · 84%</b></div><div class="profile-row"><span>Factorisation</span><b style="color:var(--amber)">Practice · 62%</b></div><div class="profile-row"><span>Word problems</span><b style="color:var(--rose)">Priority · 38%</b></div><div class="tutor-bubble">Try a short practice set on word problems next.</div></div><div class="snapshot-caption">Topic status guides personal practice without becoming a grade.</div></div>
+</div>
+<div class="feature-strip">
+  <div class="screen"><div class="screen-top"><i></i><i></i><i></i></div><div class="screen-body"><div class="screen-title">Live Quiz · Teacher monitor</div><div class="mini-grid"><div class="mini-stat"><b>4</b><span>Joined</span></div><div class="mini-stat"><b>2</b><span>Attending</span></div><div class="mini-stat"><b>2</b><span>Completed</span></div></div><div class="profile-row"><span>Quiz code</span><b style="color:var(--indigo); letter-spacing:1px">MATH742</b></div><div class="profile-row"><span>Scores</span><span>Hidden while live</span></div></div><div class="snapshot-caption">A shared code creates a focused, teacher-led diagnostic session.</div></div>
+  <div class="screen"><div class="screen-top"><i></i><i></i><i></i></div><div class="screen-body"><div class="screen-title">Personal AI Tutor</div><div class="user-bubble">Explain Pythagoras step by step.</div><div class="tutor-bubble">Start with the right triangle, identify the two known sides, then substitute into a² + b² = c².</div><div class="mini-label">PDF and image study material can be attached as context.</div></div><div class="snapshot-caption">A private tutor turns a weak concept into a next question.</div></div>
+</div>
+<h3>Assessment types are intentionally separated</h3>
+<table><tr><th>Type</th><th>Purpose</th><th>Counts as official result?</th></tr>
+<tr><td>Diagnostic Quiz</td><td>Short, teacher-led learning diagnosis with topic tagging.</td><td>No</td></tr>
+<tr><td>Personal Practice</td><td>Private AI-generated practice selected by the student or recommended from weak topics.</td><td>No</td></tr>
+<tr><td>Official Assessment</td><td>Real question paper and answer sheets with teacher verification before publication.</td><td>Yes, only after teacher publishes.</td></tr></table>
+
+<h2 id="quickstart">2. Quick Start and Demo</h2>
+<h3>First-time setup</h3>
+<ol><li>Install a current Node.js version.</li><li>Run <code>npm install</code>, then <code>npm run dev</code>.</li><li>Configure Supabase and the AI key using the environment variables in the Deployment section.</li><li>Open the Vite URL shown in the terminal.</li></ol>
+<h3>Built-in demo workspace</h3>
+<p>The application seeds demo data when the demo teacher account is present. Use the role switcher on the login screen.</p>
+<table><tr><th>Role</th><th>Username</th><th>Password</th><th>What to explore</th></tr>
+<tr><td>Teacher</td><td><code>demo.teacher</code></td><td><code>demo1234</code></td><td>Dashboard, AI quiz review, learning analysis, profiles</td></tr>
+<tr><td>Student</td><td><code>alice1</code></td><td><code>student123</code></td><td>Performance, practice, tutor</td></tr>
+<tr><td>Student</td><td><code>ben1</code></td><td><code>student123</code></td><td>Join live quiz and compare learner views</td></tr></table>
+<div class="callout amberbox"><b>Demo note:</b> The demo is designed for a reviewer to experience the product quickly. A teacher must still approve AI-generated quiz content, and official AI marking remains a draft until manually verified and published.</div>
+</section>
+
+<section class="pagebreak">
+<h2 id="teacher">3. Teacher Manual</h2>
+<h3>3.1 Account and navigation</h3>
+<ol><li>Select <b>Teacher</b> on the authentication screen.</li><li>Create an account with a name, username, and password, or log in to an existing account.</li><li>Use the teacher sidebar to open Dashboard, Assessment, Classes & Students, Subjects, Create AI Quiz, Live Quizzes, Previous Assessments, Classroom Learning Analysis, Student Profiles, and Settings.</li><li>Use Account to change the password and Log out to end the session.</li></ol>
+<h3>3.2 Set up the class workspace</h3>
+<ol><li>Open <b>Classes & Students</b> and create a class using class name, section, and academic year.</li><li>Select the class chip and add each student's name and roll number.</li><li>Use search to find students. Edit or delete records as needed.</li><li>Choose <b>Set Login</b> for a student, create a username and password, and share the credentials securely. A saved password is not shown again.</li><li>Use Enable/Disable to control whether a student can log in.</li><li>Open <b>Subjects</b> and add the curriculum subjects used by the class.</li></ol>
+<h3>3.3 Read the Dashboard</h3>
+<p>The Dashboard combines student count, assessment count, class averages, recent assessments, performance charts, and the recommended teaching move. The recommended move is driven by the weakest observed topic and links directly to Classroom Learning Analysis.</p>
+<h3>3.4 Create and approve an AI diagnostic quiz</h3>
+<ol><li>Open <b>Create AI Quiz</b> and choose a class and subject.</li><li>Enter a chapter and list topics one per line.</li><li>Select one or more question types: MCQ, True/False, Fill in the Blanks, Short Answer, 2 Mark, 3 Mark, or 6 Mark.</li><li>Set question count, difficulty, duration, and optional teacher instructions. Generation supports up to 12 questions.</li><li>Select <b>Generate Quiz</b>. The AI returns tagged questions, answers, explanations, difficulty, and marking data.</li><li>Review every item. Edit wording, marks, topics, answers, and model answers; regenerate one item, regenerate the entire quiz, delete an item, or add another generated item.</li><li>Select <b>Save Draft</b> to keep the quiz private, or <b>Approve & Start Quiz</b> to create a unique join code and make it live.</li></ol>
+<div class="callout"><b>Teacher control:</b> AI is used for drafting, not autonomous publishing. The teacher review screen is the approval gate before students see a diagnostic quiz.</div>
+<h3>3.5 Run a live quiz</h3>
+<ol><li>Share the generated quiz code with students in the same class.</li><li>Open <b>Live Quizzes</b> to monitor joined, attending, completed, and not-joined students. The view refreshes automatically.</li><li>Scores and answers remain hidden while the quiz is live.</li><li>Close the quiz when the session ends. The result view then exposes topic analysis and individual attempts.</li><li>Use <b>Reassess (Relaunch)</b> to issue a fresh code for the same quiz, or Edit / Reuse to adjust future attempts.</li></ol>
+<h3>3.6 Interpret diagnostic results</h3>
+<p>Each topic is classified using configurable thresholds:</p>
+<table><tr><th>Status</th><th>Default rule</th><th>Meaning</th></tr><tr><td><span class="pill teal">Strong</span></td><td>80% or higher</td><td>Evidence of secure performance in the current diagnostic.</td></tr><tr><td><span class="pill amber">Needs Practice</span></td><td>50% to 79%</td><td>Topic should receive more practice or explanation.</td></tr><tr><td><span class="pill rose">Priority</span></td><td>Below 50%</td><td>Highest-need topic for targeted support.</td></tr></table>
+<p>Classroom Learning Analysis shows students struggling by topic, class status, an AI-generated insight, and a bar chart. Student Profiles show subject averages, topic profile, and improvement trends across diagnostics.</p>
+</section>
+
+<section class="pagebreak">
+<h2 id="student">4. Student Manual</h2>
+<h3>4.1 Student login</h3>
+<ol><li>Select <b>Student</b> on the authentication screen.</li><li>Enter the username and password supplied by the teacher.</li><li>If the account is disabled or credentials fail, contact the teacher. Students do not create their own accounts.</li></ol>
+<h3>4.2 Join a live diagnostic quiz</h3>
+<ol><li>Open <b>Join Live Quiz</b> and enter the code shared by the teacher.</li><li>Confirm the subject, chapter, duration, and diagnostic status, then select <b>Start Quiz</b>.</li><li>Answer MCQ, True/False, Fill in the Blanks, and written questions. Use the question navigator to move between items.</li><li>The timer counts down from the assessment duration. Answers are persisted while navigating. Submission is available at any point and the quiz auto-submits when time reaches zero.</li><li>After submission, view the overall score, topic learning profile, status categories, explanations, and the recommended next practice topic.</li></ol>
+<h3>4.3 Use Personal Practice</h3>
+<ol><li>Open <b>Personal Practice</b>. Weak topics from diagnostic results appear as recommendations.</li><li>Choose a subject, optionally add a chapter, enter a topic, select question types, set questions per type, and choose difficulty.</li><li>Generate a private practice quiz. The limit is 8 total questions for reliable generation.</li><li>Answer every question and submit. Objective answers are graded immediately; written answers receive AI feedback when available.</li><li>Review solution steps, what was correct, what was missing, the misunderstood concept, and the next practice suggestion. Recent practice history remains private to the student.</li></ol>
+<h3>4.4 Use the Personal AI Tutor</h3>
+<ol><li>Open <b>Personal AI Tutor</b>, select a subject, and optionally set a topic.</li><li>Ask a free-form question or use a quick action such as explain, simplify, give an example, test me, explain a mistake, revise, summarise, use a diagram, use a graph, or explain step-by-step.</li><li>Upload PDF or image study material. The tutor can use the material as context and keeps the material attached to the student's workspace.</li><li>Review the response, which can include structured steps, tables, graphs, and diagrams where useful.</li></ol>
+<div class="callout tealbox"><b>Learning privacy:</b> Personal Practice and Personal AI Tutor activity is scoped to the logged-in student. Diagnostic and published official results are presented separately so practice does not become an official grade.</div>
+<h3>4.5 View performance and official results</h3>
+<p><b>My Performance</b> shows diagnostic performance by subject, topic status, and improvement trend. Teacher-verified official results appear in a separate Official Assessment Results section and include marks, maximum marks, and percentage.</p>
+</section>
+
+<section class="pagebreak">
+<h2 id="official">5. Official Assessment Workflow</h2>
+<p>This workflow is separate from the diagnostic quiz system. It supports a real question paper, answer key, optional reference material, and individual student answer sheets.</p>
+<div class="flow"><span class="step">Create assessment</span><span class="arrow">&rarr;</span><span class="step">Upload materials</span><span class="arrow">&rarr;</span><span class="step">AI evaluation</span><span class="arrow">&rarr;</span><span class="step">Teacher verification</span><span class="arrow">&rarr;</span><span class="step">Publish</span><span class="arrow">&rarr;</span><span class="step">Analytics</span></div>
+<h3>5.1 Create</h3><p>Open <b>Assessment</b>, choose New Assessment, and enter the assessment name, class, subject, optional chapter/topic, and maximum marks.</p>
+<h3>5.2 Upload</h3><p>Upload the required question paper and answer key. Reference material is optional. Then upload an answer sheet against each student. PDF, JPG, JPEG, and PNG files are supported; PDF and image files are the AI-readable formats.</p>
+<h3>5.3 Evaluate with AI</h3><p>Run an evaluation per student or run all. The AI compares the question paper, answer key, reference material, and answer sheet and proposes question-wise marks, answer summaries, feedback, possible learning difficulty, and overall feedback.</p>
+<h3>5.4 Verify and publish</h3><p>Open each evaluated student. Accept all AI marks or edit final marks question by question, add teacher comments, and select Verify & Publish. If a file cannot be read, enter the total manually. A result is not official until the teacher publishes it.</p>
+<h3>5.5 Analytics</h3><p>Analytics reports class average, highest and lowest percentage, number published, topic-wise performance, and individual verified results. Published results are visible to the corresponding student in My Performance.</p>
+<div class="callout amberbox"><b>Important:</b> AI evaluation is an initial suggestion. Human verification is a required product control for official assessment results.</div>
+
+<h2 id="ai">6. AI Behaviour and Safeguards</h2>
+<ul><li><b>Diagnostic generation:</b> creates JSON-structured questions with type, marks, topic, difficulty, answer data, explanations, and (for written items) model answer and marking points.</li><li><b>Question regeneration:</b> regenerates one question or the whole quiz while preserving the teacher's selected scope.</li><li><b>Subjective grading:</b> awards partial credit against model answers and marking points and returns concise learning feedback.</li><li><b>Practice generation:</b> creates a private quiz from the student's selected subject, chapter, topic, difficulty, and question mix.</li><li><b>Doubt solving:</b> answers in a tutor voice, prioritises uploaded study material, and can produce text-based visual structures.</li><li><b>Answer-sheet evaluation:</b> reads supported uploaded documents and returns a teacher-reviewable initial evaluation.</li><li><b>Validation:</b> generated diagnostic questions are parsed and checked for expected count, required fields, MCQ structure, and subjective marking fields.</li><li><b>Fallback:</b> the server retries transient Gemini failures and can use a configured fallback model.</li></ul>
+<p>AI responses should be treated as learning assistance and review input. Teachers remain responsible for content accuracy, marks, and official publication.</p>
+</section>
+
+<section class="pagebreak">
+<h2 id="stack">7. Technical Stack</h2>
+<table><tr><th>Layer</th><th>Technology</th><th>How it is used</th></tr>
+<tr><td>Frontend</td><td>React, React DOM</td><td>Single-page application with role-based views and component state.</td></tr>
+<tr><td>Build and dev server</td><td>Vite, @vitejs/plugin-react</td><td>Local development, JSX transformation, and production bundling.</td></tr>
+<tr><td>UI styling</td><td>Tailwind CSS CDN plus utility classes</td><td>Responsive layout, forms, navigation, cards, status colors, and print-friendly app surface.</td></tr>
+<tr><td>Icons</td><td>lucide-react</td><td>Consistent interface icons for navigation and actions.</td></tr>
+<tr><td>Charts</td><td>Recharts</td><td>Student trends, subject performance, and topic/class analytics.</td></tr>
+<tr><td>AI provider</td><td>Google Gemini Generative Language API</td><td>Quiz generation, subjective grading, tutoring, and answer-sheet evaluation.</td></tr>
+<tr><td>Persistence</td><td>Supabase PostgREST</td><td>JSON application state in <code>loop_state</code> and file payloads in <code>loop_files</code>.</td></tr>
+<tr><td>Server endpoints</td><td>Node-style API handlers</td><td><code>/api/db</code>, <code>/api/files</code>, and <code>/api/claude</code> proxy requests server-side.</td></tr>
+<tr><td>Authentication</td><td>Application-level salted SHA-256 prototype hashing</td><td>Teacher and student credential verification in the current prototype.</td></tr>
+</table>
+<div class="callout"><b>Implementation note:</b> The frontend calls the endpoint named <code>/api/claude</code>, while that handler sends requests to Gemini. The route name is a compatibility/legacy name; the configured provider is Gemini.</div>
+
+<h2 id="architecture">8. Architecture and Data</h2>
+<h3>Request flow</h3>
+<div class="flow"><span class="step">React UI</span><span class="arrow">&rarr;</span><span class="step">/api/db or /api/files</span><span class="arrow">&rarr;</span><span class="step">Supabase REST</span></div>
+<div class="flow"><span class="step">React AI action</span><span class="arrow">&rarr;</span><span class="step">/api/claude</span><span class="arrow">&rarr;</span><span class="step">Gemini API</span><span class="arrow">&rarr;</span><span class="step">validated UI result</span></div>
+<h3>Primary state collections</h3>
+<table><tr><th>Collection</th><th>Contents</th></tr>
+<tr><td><code>teacherAccounts</code></td><td>Teacher identity, salt, and password hash.</td></tr>
+<tr><td><code>classes</code>, <code>students</code>, <code>subjects</code></td><td>Teaching workspace structure and student login state.</td></tr>
+<tr><td><code>assessments</code></td><td>Diagnostic quiz metadata, questions, status, code, and timestamps.</td></tr>
+<tr><td><code>quizAttempts</code></td><td>Student answers, scores, topic percentages, status, and submission time.</td></tr>
+<tr><td><code>practiceSessions</code></td><td>Private practice score history for a student.</td></tr>
+<tr><td><code>studentMaterials</code></td><td>Student-owned material references.</td></tr>
+<tr><td><code>officialAssessments</code></td><td>Official assessment workflow state, materials, submissions, AI evaluation, teacher final marks, and publication timestamps.</td></tr>
+</table>
+<p>Supabase tables are defined in <code>supabase-schema.sql</code>. The schema uses JSONB payloads in <code>loop_state</code> and <code>loop_files</code>, keyed by a default state id or generated file id.</p>
+</section>
+
+<section class="pagebreak">
+<h2 id="deployment">9. Configuration and Deployment</h2>
+<h3>Required environment variables</h3>
+<table><tr><th>Variable</th><th>Purpose</th></tr>
+<tr><td><code>SUPABASE_URL</code></td><td>Supabase project URL used by the server handlers.</td></tr>
+<tr><td><code>SUPABASE_SERVICE_ROLE_KEY</code></td><td>Server-side key used for REST reads and writes. Keep private.</td></tr>
+<tr><td><code>GEMINI_API_KEY</code></td><td>Server-side Google Gemini API key. Keep private.</td></tr>
+<tr><td><code>GEMINI_MODEL</code></td><td>Optional model override; defaults to the model requested by the client.</td></tr>
+<tr><td><code>GEMINI_FALLBACK_MODEL</code></td><td>Optional fallback model for transient/provider failures.</td></tr></table>
+<h3>Supabase setup</h3>
+<ol><li>Create a Supabase project.</li><li>Run the SQL in <code>supabase-schema.sql</code>.</li><li>Provide the project URL and service-role key to the server environment only.</li><li>Do not expose the service-role key in client-side Vite variables.</li></ol>
+<h3>Build and deploy checks</h3>
+<ol><li>Run <code>npm run build</code> to create the Vite production bundle.</li><li>Deploy the frontend and API handlers to a host that supports the project routing model, such as a Vercel-style deployment.</li><li>Add environment variables in the host project settings.</li><li>Open the deployed site, create a test account, verify database persistence, then test one AI request.</li></ol>
+<div class="callout rose"><b>Operational security:</b> This is a hackathon prototype. The current UI performs application-level credential checks and the server uses a service-role database key. A production release should move authentication and authorization to a dedicated server-side identity system, add row-level ownership checks, validate file size/type, and protect AI endpoints with authenticated sessions and rate limits.</div>
+
+<h2 id="limitations">10. Prototype Boundaries and Roadmap</h2>
+<h3>Current boundaries</h3>
+<ul><li>Diagnostic and practice generation depends on a configured Gemini key and an available model.</li><li>AI-readable official assessment files are PDF or image formats; unsupported uploads require manual verification.</li><li>The prototype stores application state as JSONB rather than normalized, multi-tenant domain tables.</li><li>Passwords are salted and hashed in the application, but this is explicitly not a replacement for production authentication.</li><li>Official results require teacher publication and are intentionally separated from diagnostics and practice.</li></ul>
+<h3>Strong next steps</h3>
+<ul><li>Replace prototype authentication with Supabase Auth or another server-managed identity provider.</li><li>Add tenant-aware authorization, audit logs, rate limiting, and signed/private file access.</li><li>Move large files to object storage and store metadata in normalized tables.</li><li>Add exportable reports, attendance/session controls, and richer longitudinal analytics.</li><li>Add automated tests for quiz grading, threshold classification, role access, and official publication rules.</li></ul>
+<h3>Hackathon value proposition</h3>
+<p>Loop Learning AI closes the gap between knowing a student's score and knowing what to do next. It combines structured diagnosis, explainable topic signals, targeted practice, AI tutoring, and a human-controlled official marking workflow in one coherent learning loop.</p>
+<div class="footer-note">Loop Learning AI | User Manual and Technical Documentation | Version 1.0</div>
+</section>
+</body>
+</html>
