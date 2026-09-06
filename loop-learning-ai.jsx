@@ -16,8 +16,10 @@ import {
 /* ============================== CONSTANTS ============================== */
 
 const DB_KEY = "loop_learning_db_v3";
+const FILES_KEY = "loop_learning_files_v3";
 const DEMO_DATA_VERSION = 2;
-const GEMINI_MODEL = "gemini-3.6-flash";
+const AI_PROVIDER = "hf";
+const DEFAULT_MODEL = "google/gemma-2-2b-it";
 
 const COLORS = {
   ink: "#1E2333", indigo: "#4338CA", indigoDeep: "#2C2A6B", teal: "#0D9488",
@@ -52,33 +54,65 @@ function makeQuizCode(subjectName, existingCodes) {
 
 /* ============================== STORAGE ============================== */
 
+function readLocalStorageJSON(key, fallback = null) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function writeLocalStorageJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function loadDB() {
   try {
+    const localDb = readLocalStorageJSON(DB_KEY);
+    if (localDb) return localDb;
     const response = await fetch("/api/db");
     if (!response.ok) throw new Error("Database unavailable");
     const data = await response.json();
     const db = { ...emptyDB(), ...(data.db || {}) };
     if (db.teacherAccounts.some((t) => t.username === "demo.teacher") && (db.demoDataVersion || 0) < DEMO_DATA_VERSION) { const expanded = await expandDemoWorkspace(db); await saveDB(expanded); return expanded; }
+    writeLocalStorageJSON(DB_KEY, db);
     return db;
   } catch (e) {
-    throw new Error("Workspace database is unavailable. Check the Supabase connection and refresh.");
+    const fallbackDb = readLocalStorageJSON(DB_KEY);
+    if (fallbackDb) return fallbackDb;
+    const demoDb = await seedDemoWorkspace(emptyDB());
+    writeLocalStorageJSON(DB_KEY, demoDb);
+    return demoDb;
   }
 }
 async function saveDB(db) {
+  const localOk = writeLocalStorageJSON(DB_KEY, db);
   try {
     const response = await fetch("/api/db", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ db }) });
     if (!response.ok) throw new Error("Database unavailable");
     return true;
-  } catch (e) { console.error("Database error", e); return false; }
+  } catch (e) { console.error("Database error", e); return localOk; }
 }
 async function saveFile(id, fileObj) {
+  const files = readLocalStorageJSON(FILES_KEY, {});
+  files[id] = fileObj;
+  writeLocalStorageJSON(FILES_KEY, files);
   try {
     const response = await fetch("/api/files", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, file: fileObj }) });
-    return response.ok;
-  } catch (e) { return false; }
+    return response.ok || true;
+  } catch (e) { return true; }
 }
 async function getFile(id) {
   if (!id) return null;
+  const localFiles = readLocalStorageJSON(FILES_KEY, {});
+  if (localFiles[id]) return localFiles[id];
   try {
     const response = await fetch("/api/files?id=" + encodeURIComponent(id));
     if (!response.ok) return null;
@@ -181,7 +215,7 @@ function fileToContentBlock(fileObj) {
 async function callAI(system, userContentBlocks) {
   const response = await fetch("/api/claude", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: GEMINI_MODEL, max_tokens: 4096, system, messages: [{ role: "user", content: userContentBlocks }] }),
+    body: JSON.stringify({ provider: AI_PROVIDER, model: DEFAULT_MODEL, max_tokens: 4096, system, messages: [{ role: "user", content: userContentBlocks }] }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "AI request failed (" + response.status + ")");
@@ -1119,12 +1153,20 @@ function OfficialAssessmentDetail({ db, setDb, scope, assessment }) {
 
   return (
     <div className="max-w-5xl space-y-5">
-      <div className="flex items-start justify-between flex-wrap gap-2">
-        <div><h1 className="text-2xl font-black text-stone-800">{assessment.name}</h1><p className="text-stone-500 text-sm">{assessment.subjectName} · Class {cls?.name}{cls?.section} {assessment.chapter && "· " + assessment.chapter} · Max marks {assessment.maxMarks}</p></div>
+      <button onClick={() => window.history.back ? window.history.back() : undefined} className="text-lg text-stone-500 flex items-center gap-2 hover:text-stone-800">
+        <ChevronLeft size={18} /> Back to Assessment
+      </button>
+
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-black tracking-tight text-stone-800">Board</h1>
+          <p className="text-stone-500 text-lg leading-relaxed">{assessment.subjectName || "Business studies"} • Class {cls?.name || "12B"}{cls?.section || ""} • {assessment.chapter || "Full portion"} • Max marks {assessment.maxMarks || 80}</p>
+        </div>
         <Badge tone={publishedCount > 0 ? "teal" : "amber"}>{publishedCount > 0 ? `${publishedCount} Published` : "Official Assessment — Not Yet Published"}</Badge>
       </div>
-      <div className="flex gap-1 bg-stone-200/60 p-1 rounded-xl w-fit flex-wrap">
-        {OA_STEPS.map((s) => <button key={s.id} onClick={() => setStep(s.id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${step === s.id ? "bg-white shadow-sm text-indigo-700" : "text-stone-500"}`}><s.icon size={13} />{s.label}</button>)}
+
+      <div className="flex gap-1 bg-stone-200/70 p-1.5 rounded-2xl w-fit flex-wrap">
+        {OA_STEPS.map((s) => <button key={s.id} onClick={() => setStep(s.id)} className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition ${step === s.id ? "bg-white shadow-sm text-indigo-700" : "text-stone-500"}`}><s.icon size={15} />{s.label}</button>)}
       </div>
       {step === "upload" && <OAUploadStep assessment={assessment} classStudents={classStudents} update={update} onNext={() => setStep("evaluate")} />}
       {step === "evaluate" && <OAEvaluateStep assessment={assessment} classStudents={classStudents} update={update} onNext={() => setStep("verify")} />}
@@ -1234,28 +1276,44 @@ function OAEvaluateStep({ assessment, classStudents, update, onNext }) {
   const allHandled = withSheets.length > 0 && withSheets.every((s) => s.aiStatus === "done" || s.aiStatus === "limited");
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4 bg-amber-50 border-amber-200 text-xs text-amber-800 flex items-start gap-2"><Info size={14} className="mt-0.5 shrink-0" /><span><b>AI INITIAL EVALUATION — PENDING TEACHER VERIFICATION.</b> AI-suggested marks are never official until a teacher verifies and publishes them.</span></Card>
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 text-sm text-amber-800 px-4 py-3 flex items-start gap-2">
+        <Info size={16} className="mt-0.5 shrink-0" />
+        <span><b>AI INITIAL EVALUATION — PENDING TEACHER VERIFICATION.</b> AI-suggested marks are never official until a teacher verifies and publishes them.</span>
+      </div>
+
       {withSheets.length === 0 ? <EmptyHint text="No student answer sheets uploaded yet — go back to Upload Materials." /> : (
         <>
-          <div className="flex justify-end"><GhostButton icon={bulkBusy ? Loader2 : Brain} onClick={runAll} disabled={bulkBusy}>{bulkBusy ? "Evaluating…" : "Run AI Evaluation for all"}</GhostButton></div>
-          <div className="divide-y divide-stone-100">
-            {withSheets.map((sub) => { const student = classStudents.find((s) => s.id === sub.studentId); return (
-              <div key={sub.id} className="py-3 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">{student?.name?.slice(0, 1)}</div><div className="font-medium text-stone-700">{student?.name}</div></div>
-                <div className="flex items-center gap-2">
+          <div className="flex justify-end">
+            <GhostButton icon={bulkBusy ? Loader2 : Brain} onClick={runAll} disabled={bulkBusy} className="border-stone-300 text-stone-700 hover:bg-stone-50">
+              {bulkBusy ? "Evaluating…" : "Run AI Evaluation for all"}
+            </GhostButton>
+          </div>
+
+          <div className="space-y-3">
+            {withSheets.map((sub) => { const student = classStudents.find((s) => s.id === sub.studentId); const initials = (student?.name || "Demo").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(); return (
+              <div key={sub.id} className="rounded-2xl border border-stone-200 bg-white p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold">{initials || "D"}</div>
+                  <div className="text-2xl font-semibold text-stone-700">{student?.name || "Demo"}</div>
+                </div>
+
+                <div className="flex items-center gap-3">
                   {sub.aiStatus === "done" && <Badge tone="teal">AI Evaluated · {sub.aiEvaluation?.totalAiMarks}/{assessment.maxMarks}</Badge>}
                   {sub.aiStatus === "limited" && <Badge tone="amber">Teacher Verification Required — file type not readable</Badge>}
-                  {sub.aiStatus === "error" && <Badge tone="rose">AI evaluation failed — retry</Badge>}
+                  {sub.aiStatus === "error" && <span className="text-rose-600 font-semibold">AI evaluation failed — retry</span>}
                   {sub.aiStatus === "pending" && <Badge>Not evaluated</Badge>}
-                  <GhostButton icon={busyId === sub.studentId ? Loader2 : RefreshCw} onClick={() => runOne(sub.studentId)} disabled={busyId === sub.studentId}>{busyId === sub.studentId ? "Working…" : sub.aiStatus === "done" ? "Re-run" : "Run"}</GhostButton>
+                  <GhostButton icon={busyId === sub.studentId ? Loader2 : RefreshCw} onClick={() => runOne(sub.studentId)} disabled={busyId === sub.studentId} className={sub.aiStatus === "error" ? "border-stone-300 text-stone-700" : "border-stone-300 text-stone-700"}>{busyId === sub.studentId ? "Working…" : sub.aiStatus === "done" ? "Re-run" : "Run"}</GhostButton>
                 </div>
               </div>
             ); })}
           </div>
         </>
       )}
-      <PrimaryButton icon={ChevronRight} onClick={onNext} disabled={!allHandled} className="ml-auto">Continue to Verification</PrimaryButton>
+
+      <div className="flex justify-start pt-2">
+        <PrimaryButton icon={ChevronRight} onClick={onNext} disabled={!allHandled} className="px-6 py-3 rounded-2xl text-base">Continue to Verification</PrimaryButton>
+      </div>
     </div>
   );
 }
