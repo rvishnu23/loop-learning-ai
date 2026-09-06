@@ -1154,9 +1154,21 @@ const OA_STEPS = [
 function OfficialAssessments({ db, setDb, scope }) {
   const [activeId, setActiveId] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const myOfficial = db.officialAssessments.filter((a) => scope.classes.some((c) => c.id === a.classId));
 
   if (creating) return <CreateOfficialAssessment db={db} setDb={setDb} scope={scope} onCancel={() => setCreating(false)} onCreated={(id) => { setCreating(false); setActiveId(id); }} />;
+  if (editingId) {
+    const assessment = db.officialAssessments.find((item) => item.id === editingId);
+    if (!assessment) { setEditingId(null); return null; }
+    return <CreateOfficialAssessment db={db} setDb={setDb} scope={scope} assessment={assessment} onCancel={() => setEditingId(null)} onCreated={() => setEditingId(null)} />;
+  }
+
+  const deleteDraft = async (assessment) => {
+    if (assessment.status !== "draft") return;
+    if (!window.confirm(`Delete draft "${assessment.name}"? This cannot be undone.`)) return;
+    await setDb({ ...db, officialAssessments: db.officialAssessments.filter((item) => item.id !== assessment.id) });
+  };
 
   if (activeId) {
     const a = db.officialAssessments.find((x) => x.id === activeId);
@@ -1190,6 +1202,10 @@ function OfficialAssessments({ db, setDb, scope }) {
                   <Badge tone={published > 0 && published === withSheets && withSheets > 0 ? "teal" : tone}>{published > 0 && published === withSheets && withSheets > 0 ? "Published" : label}</Badge>
                 </div>
                 <div className="mt-2 text-xs text-stone-500">Max marks: {a.maxMarks} · {withSheets} sheet(s) uploaded · {published} published</div>
+                {a.status === "draft" && <div className="mt-3 flex justify-end gap-2" onClick={(event) => event.stopPropagation()}>
+                  <GhostButton icon={Pencil} onClick={() => setEditingId(a.id)} className="border-stone-300 text-stone-700">Edit draft</GhostButton>
+                  <GhostButton icon={Trash2} onClick={() => deleteDraft(a)} className="border-rose-200 text-rose-700 hover:bg-rose-50">Delete</GhostButton>
+                </div>}
               </Card>
             );
           })}
@@ -1199,13 +1215,19 @@ function OfficialAssessments({ db, setDb, scope }) {
   );
 }
 
-function CreateOfficialAssessment({ db, setDb, scope, onCancel, onCreated }) {
-  const [form, setForm] = useState({ name: "", classId: scope.classes[0]?.id || "", subjectId: db.subjects[0]?.id || "", chapter: "", maxMarks: 100 });
+function CreateOfficialAssessment({ db, setDb, scope, assessment, onCancel, onCreated }) {
+  const [form, setForm] = useState(() => assessment ? { name: assessment.name, classId: assessment.classId, subjectId: assessment.subjectId, chapter: assessment.chapter, maxMarks: assessment.maxMarks } : { name: "", classId: scope.classes[0]?.id || "", subjectId: db.subjects[0]?.id || "", chapter: "", maxMarks: 100 });
   const [error, setError] = useState("");
   const create = async () => {
     setError("");
     if (!form.name.trim() || !form.classId || !form.subjectId || !Number(form.maxMarks)) { setError("Fill in the assessment name, class, subject and maximum marks."); return; }
     const subject = db.subjects.find((s) => s.id === form.subjectId);
+    if (assessment) {
+      const updated = { ...assessment, name: form.name.trim(), classId: form.classId, subjectId: form.subjectId, subjectName: subject?.name || "", chapter: form.chapter.trim(), maxMarks: Number(form.maxMarks) };
+      await setDb({ ...db, officialAssessments: db.officialAssessments.map((item) => item.id === assessment.id ? updated : item) });
+      onCreated(assessment.id);
+      return;
+    }
     const a = { id: uid(), name: form.name.trim(), classId: form.classId, subjectId: form.subjectId, subjectName: subject?.name || "", chapter: form.chapter.trim(), maxMarks: Number(form.maxMarks), status: "draft", createdAt: new Date().toISOString(), materials: { questionPaper: null, answerKey: null, reference: null }, submissions: [] };
     await setDb({ ...db, officialAssessments: [...db.officialAssessments, a] });
     onCreated(a.id);
@@ -1213,7 +1235,7 @@ function CreateOfficialAssessment({ db, setDb, scope, onCancel, onCreated }) {
   return (
     <div className="max-w-xl space-y-5">
       <button onClick={onCancel} className="text-sm text-stone-500 flex items-center gap-1 hover:text-stone-800"><ChevronLeft size={15} /> Back to Assessment</button>
-      <h1 className="text-2xl font-black text-stone-800">New Assessment</h1>
+      <h1 className="text-2xl font-black text-stone-800">{assessment ? "Edit Draft Assessment" : "New Assessment"}</h1>
       <Card className="p-5 space-y-3">
         <div><div className="text-xs font-semibold text-stone-500 mb-1">Assessment name</div><TextInput placeholder="e.g. Unit Test 1" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
         <div className="grid sm:grid-cols-2 gap-3">
@@ -1224,7 +1246,7 @@ function CreateOfficialAssessment({ db, setDb, scope, onCancel, onCreated }) {
         <div><div className="text-xs font-semibold text-stone-500 mb-1">Maximum marks</div><TextInput type="number" value={form.maxMarks} onChange={(e) => setForm({ ...form, maxMarks: e.target.value })} /></div>
         {error && <div className="text-sm text-rose-600 flex items-center gap-1"><AlertTriangle size={14} />{error}</div>}
         {scope.classes.length === 0 && <div className="text-xs text-amber-600">You'll need a class first — you can still create the assessment and add students afterwards.</div>}
-        <PrimaryButton icon={Plus} onClick={create} className="w-full justify-center">Create &amp; Continue to Upload</PrimaryButton>
+        <PrimaryButton icon={assessment ? CheckCircle2 : Plus} onClick={create} className="w-full justify-center">{assessment ? "Save Draft Changes" : "Create &amp; Continue to Upload"}</PrimaryButton>
       </Card>
     </div>
   );
