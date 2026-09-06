@@ -18,8 +18,8 @@ import {
 const DB_KEY = "loop_learning_db_v3";
 const FILES_KEY = "loop_learning_files_v3";
 const DEMO_DATA_VERSION = 2;
-const AI_PROVIDER = "hf";
-const DEFAULT_MODEL = "google/gemma-2-2b-it";
+const AI_PROVIDER = "openrouter";
+const DEFAULT_MODEL = "meta-llama/llama-3.1-8b-instruct";
 
 const COLORS = {
   ink: "#1E2333", indigo: "#4338CA", indigoDeep: "#2C2A6B", teal: "#0D9488",

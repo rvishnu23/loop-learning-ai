@@ -79,8 +79,71 @@ app.put("/api/files", async (req, res) => {
 
 app.post("/api/claude", async (req, res) => {
   const { model, max_tokens: maxTokens, system, messages = [], provider: requestProvider } = req.body || {};
-  const selectedProvider = String(requestProvider || process.env.AI_PROVIDER || (process.env.HF_MODEL ? "hf" : "gemini")).toLowerCase();
-  console.log("AI route provider:", selectedProvider, "model:", model || process.env.HF_MODEL || process.env.GEMINI_MODEL);
+  const selectedProvider = String(requestProvider || process.env.AI_PROVIDER || (process.env.OPENROUTER_API_KEY ? "openrouter" : (process.env.HF_MODEL ? "hf" : "gemini"))).toLowerCase();
+  console.log("AI route provider:", selectedProvider, "model:", model || process.env.OPENROUTER_MODEL || process.env.HF_MODEL || process.env.GEMINI_MODEL);
+
+  if (selectedProvider === "openrouter") {
+    const userMessage = messages.find((message) => message.role === "user");
+    const textBlocks = (userMessage?.content || []).filter((block) => block.type === "text");
+    const userText = textBlocks.map((block) => block.text || "").join("\n") || "Please respond.";
+    const openRouterModel = model || process.env.OPENROUTER_MODEL || "meta-llama/llama-3.1-8b-instruct";
+    const openRouterKey = process.env.OPENROUTER_API_KEY;
+
+    if (!openRouterKey) {
+      return res.status(503).json({ error: "AI is not configured. Add OPENROUTER_API_KEY to your environment." });
+    }
+
+    const openRouterRequest = async (requestModel) => {
+      const upstream = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "http://localhost:5173",
+          "X-Title": "Loop Learning AI",
+        },
+        body: JSON.stringify({
+          model: requestModel,
+          messages: [
+            { role: "system", content: system || "You are a helpful assistant." },
+            { role: "user", content: userText },
+          ],
+          max_tokens: maxTokens || 512,
+          temperature: 0.2,
+        }),
+      });
+
+      const body = await upstream.json().catch(() => ({}));
+      if (!upstream.ok) {
+        const msg = body?.error?.message || body?.error || `OpenRouter request failed (${upstream.status})`;
+        return { ok: false, status: upstream.status, message: msg, body };
+      }
+
+      const text = body?.choices?.[0]?.message?.content || "";
+      return { ok: true, text };
+    };
+
+    try {
+      const primary = await openRouterRequest(openRouterModel);
+      if (primary.ok) {
+        return res.json({ content: [{ text: primary.text }] });
+      }
+
+      const fallbackModel = "meta-llama/llama-3.1-8b-instruct";
+      if (openRouterModel !== fallbackModel && (primary.message || "").toLowerCase().includes("unavailable for free")) {
+        const fallback = await openRouterRequest(fallbackModel);
+        if (fallback.ok) {
+          return res.json({ content: [{ text: fallback.text }] });
+        }
+
+        return res.status(fallback.status || 502).json({ error: fallback.message || "OpenRouter request failed" });
+      }
+
+      return res.status(primary.status || 502).json({ error: primary.message || "OpenRouter request failed" });
+    } catch (error) {
+      return res.status(502).json({ error: error instanceof Error ? error.message : "AI service unavailable" });
+    }
+  }
 
   if (selectedProvider === "hf") {
     const userMessage = messages.find((message) => message.role === "user");
